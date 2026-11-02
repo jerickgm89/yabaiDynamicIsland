@@ -1,0 +1,14 @@
+# Generado por XcodeGen desde project.yml
+YabaiBar.xcodeproj/
+
+# Productos de compilación (yb.sh usa build/DerivedData)
+build/
+DerivedData/
+
+# Xcode y macOS
+xcuserdata/
+*.xcuserstate
+.DS_Store
+
+# Permisos locales de Claude Code
+.claude/settings.local.json

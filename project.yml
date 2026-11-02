@@ -1,0 +1,54 @@
+name: YabaiBar
+
+options:
+  bundleIdPrefix: com.jerickdev
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+
+targets:
+  YabaiBar:
+    type: application
+    platform: macOS
+    sources:
+      - path: YabaiBar
+    info:
+      path: YabaiBar/Info.plist
+      properties:
+        CFBundleDisplayName: YabaiBar
+        LSUIElement: true
+        LSApplicationCategoryType: public.app-category.utilities
+        CFBundleURLTypes:
+          - CFBundleURLName: com.jerickdev.yabaibar
+            CFBundleURLSchemes:
+              - yabaibar
+    settings:
+      base:
+        PRODUCT_NAME: YabaiBar
+        PRODUCT_BUNDLE_IDENTIFIER: com.jerickdev.yabaibar
+        GENERATE_INFOPLIST_FILE: NO
+        ENABLE_APP_SANDBOX: NO
+    scheme:
+      testTargets:
+        - YabaiBarTests
+
+  YabaiBarTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: YabaiBarTests
+    dependencies:
+      - target: YabaiBar
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jerickdev.yabaibar.tests
+        GENERATE_INFOPLIST_FILE: YES
