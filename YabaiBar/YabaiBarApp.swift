@@ -28,7 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let yabai = YabaiClient()
         let store = SpacesStore(yabai: yabai)
         self.store = store
-        statusBar = StatusBarController(store: store, renderer: BarRenderer())
+        statusBar = StatusBarController(store: store, renderer: BarRenderer(), launchAtLogin: LaunchAtLogin())
 
         let center = NSWorkspace.shared.notificationCenter
         workspaceObservers = Self.refreshNotifications.map { name in

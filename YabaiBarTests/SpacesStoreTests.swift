@@ -96,3 +96,22 @@ struct StatusBarTitleTests {
         #expect(StatusBarController.title(for: [], failed: true) == "YB ⚠︎")
     }
 }
+
+struct YabaiErrorMessageTests {
+    @Test(arguments: [
+        (YabaiError.notInstalled(path: "/usr/local/bin/yabai"), "No se encuentra yabai en /usr/local/bin/yabai"),
+        (.notRunning, "yabai no está en marcha"),
+        (.timedOut(command: "yabai -m query --spaces"), "yabai no respondió a tiempo"),
+        (.commandFailed(command: "yabai -m query --spaces", stderr: ""), "yabai devolvió un error"),
+        (.commandFailed(command: "yabai -m query --spaces", stderr: "could not locate space"), "yabai: could not locate space"),
+        (.decoding("dataCorrupted"), "No se entendió la respuesta de yabai"),
+    ])
+    func explainsEachFailureForTheMenu(error: YabaiError, message: String) {
+        #expect(error.userMessage == message)
+    }
+
+    @Test func truncatesLongErrorOutput() {
+        let error = YabaiError.commandFailed(command: "yabai", stderr: String(repeating: "x", count: 500))
+        #expect(error.userMessage.count == "yabai: ".count + 80)
+    }
+}
