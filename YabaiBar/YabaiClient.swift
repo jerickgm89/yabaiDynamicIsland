@@ -90,7 +90,11 @@ struct YabaiClient: YabaiQuerying, SpaceFocusing {
         process.standardOutput = output
         process.standardError = errorOutput
 
-        try process.run()
+        do {
+            try process.run()
+        } catch {
+            throw YabaiError.commandFailed(command: command, stderr: error.localizedDescription)
+        }
         let watchdog = DispatchWorkItem { if process.isRunning { process.terminate() } }
         DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: watchdog)
         // yabai escribe muy poco en stderr: leer stdout primero no llega a llenar el otro pipe
