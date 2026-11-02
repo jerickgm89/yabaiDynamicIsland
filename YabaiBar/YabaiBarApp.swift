@@ -12,6 +12,7 @@ struct YabaiBarApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var store: SpacesStore?
     private var statusBar: StatusBarController?
+    private var island: IslandController?
     private var workspaceObservers: [NSObjectProtocol] = []
 
     // Lo que macOS avisa por sí solo; ventanas y espacios de yabai llegan por yabaibar://refresh
@@ -29,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let store = SpacesStore(yabai: yabai)
         self.store = store
         statusBar = StatusBarController(store: store, renderer: BarRenderer(), launchAtLogin: LaunchAtLogin())
+        island = IslandController()
 
         let center = NSWorkspace.shared.notificationCenter
         workspaceObservers = Self.refreshNotifications.map { name in
