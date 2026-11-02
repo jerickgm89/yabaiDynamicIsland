@@ -1,6 +1,6 @@
 import Foundation
 
-// Geometría pura de la barra: BarView la usa para dibujar y StatusBarController para saber dónde cayó un clic
+// Geometría pura de la barra: ancho y posición de cada espacio, que BarView usa para dibujar
 struct BarLayout: Equatable {
     static let height: CGFloat = 22
     static let capsuleHeight: CGFloat = 20

@@ -39,7 +39,7 @@ struct BarLayoutTests {
 
 @MainActor
 struct BarRendererTests {
-    // Si la imagen no mide lo mismo que el layout, el clic de la fase 6 caería en el espacio equivocado
+    // Si la imagen no mide lo mismo que el layout, BarView está recortando o estirando algún espacio
     @Test func imageMatchesTheLayoutSize() {
         let spaces = [makeSummary(1, apps: 0), makeSummary(2, apps: 2, focused: true), makeSummary(3, apps: 4)]
         let bar = BarRenderer().render(spaces, isDark: true, scale: 2)

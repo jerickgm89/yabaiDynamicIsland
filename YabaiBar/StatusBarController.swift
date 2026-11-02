@@ -3,7 +3,7 @@ import Observation
 import os
 
 @MainActor
-final class StatusBarController {
+final class StatusBarController: NSObject {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let store: SpacesStore
     private let renderer: BarRenderer
@@ -11,7 +11,24 @@ final class StatusBarController {
     init(store: SpacesStore, renderer: BarRenderer) {
         self.store = store
         self.renderer = renderer
+        super.init()
+        // Cualquier clic abre el menú: para cambiar de espacio se usa el atajo ⌥N de Mission Control
+        statusItem.menu = makeMenu()
         observeStore()
+    }
+
+    private func makeMenu() -> NSMenu {
+        let menu = NSMenu()
+        let refresh = NSMenuItem(title: "Refrescar", action: #selector(refreshFromMenu), keyEquivalent: "r")
+        refresh.target = self
+        menu.addItem(refresh)
+        menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: "Salir", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        return menu
+    }
+
+    @objc private func refreshFromMenu() {
+        store.requestRefresh()
     }
 
     // withObservationTracking avisa una sola vez y antes del cambio: se vuelve a registrar en el siguiente ciclo

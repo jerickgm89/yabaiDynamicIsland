@@ -14,12 +14,7 @@ protocol YabaiQuerying: Sendable {
     func windows() async throws -> [YabaiWindow]
 }
 
-protocol SpaceFocusing: Sendable {
-    /// Devuelve `false` si no se pudo enfocar, por ejemplo sin la scripting addition.
-    func focus(space index: Int) async -> Bool
-}
-
-struct YabaiClient: YabaiQuerying, SpaceFocusing {
+struct YabaiClient: YabaiQuerying {
     static let candidatePaths = ["/opt/homebrew/bin/yabai", "/usr/local/bin/yabai"]
 
     let executablePath: String
@@ -46,16 +41,6 @@ struct YabaiClient: YabaiQuerying, SpaceFocusing {
 
     func windows() async throws -> [YabaiWindow] {
         try await query("--windows")
-    }
-
-    func focus(space index: Int) async -> Bool {
-        do {
-            _ = try await run(["space", "--focus", String(index)])
-            return true
-        } catch {
-            Logger.yabai.error("No se pudo enfocar el espacio \(index): \(String(describing: error), privacy: .public)")
-            return false
-        }
     }
 
     private func query<T: Decodable>(_ domain: String) async throws -> T {

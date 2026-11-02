@@ -52,14 +52,4 @@ struct YabaiClientTests {
         }
         #expect(elapsed < .seconds(2))
     }
-
-    @Test func focusPassesIndexAndReportsResult() async throws {
-        let argsFile = FileManager.default.temporaryDirectory.appending(path: "fake-yabai-args-\(UUID().uuidString)")
-        let succeeding = try FakeYabai.make("echo \"$@\" > '\(argsFile.path(percentEncoded: false))'")
-        #expect(await YabaiClient(executablePath: succeeding).focus(space: 3))
-        #expect(try String(contentsOf: argsFile, encoding: .utf8) == "-m space --focus 3\n")
-
-        let failing = try FakeYabai.make("exit 1")
-        #expect(await YabaiClient(executablePath: failing).focus(space: 3) == false)
-    }
 }
