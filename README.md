@@ -138,6 +138,10 @@ El gesto y el atajo funcionan nada más abrir la app, sin permisos.
 
 Haz clic en la isla y elige "Ajustes…". Los cambios se aplican al momento y se guardan para la próxima vez.
 
+<p align="center">
+  <img src="assets/ajustes.png" width="470" alt="La ventana de ajustes: velocidad de las alas en Normal, atajo ⌥I, Ocultar sola activado y al cabo de 3 s">
+</p>
+
 | Ajuste | Qué hace | Por defecto |
 | --- | --- | --- |
 | Velocidad de las alas | Lo que tardan las alas en recogerse y volver a salir al cambiar de escritorio: Lenta, Normal, Rápida o Sin animación | Normal |
