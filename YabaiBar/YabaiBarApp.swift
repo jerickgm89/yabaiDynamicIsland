@@ -1,3 +1,4 @@
+import Carbon.HIToolbox
 import SwiftUI
 import notify
 import os
@@ -14,6 +15,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var store: SpacesStore?
     private var menu: AppMenu?
     private var island: IslandController?
+    private var toggleKey: GlobalHotKey?
+    private var trackpad: TrackpadMonitor?
     private var workspaceObservers: [NSObjectProtocol] = []
     private var refreshToken: Int32 = NOTIFY_TOKEN_INVALID
 
@@ -38,7 +41,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.store = store
         let menu = AppMenu(store: store, launchAtLogin: LaunchAtLogin())
         self.menu = menu
-        island = IslandController(store: store, icons: AppIcons(), menu: menu, focuser: ShortcutFocuser())
+        let island = IslandController(store: store, icons: AppIcons(), menu: menu, focuser: ShortcutFocuser())
+        self.island = island
+
+        // Abrir la isla desde cualquier app, sin llevar el puntero: ⌥I o 3 o 4 dedos hacia abajo
+        toggleKey = GlobalHotKey(keyCode: kVK_ANSI_I, modifiers: optionKey) {
+            Logger.app.info("Atajo: ⌥I")
+            island.toggle()
+        }
+        if toggleKey == nil { Logger.app.error("No se pudo registrar el atajo ⌥I: ¿lo usa otra app?") }
+        trackpad = TrackpadMonitor {
+            Logger.app.info("Gesto: 3 o 4 dedos hacia abajo")
+            island.toggle()
+        }
 
         let center = NSWorkspace.shared.notificationCenter
         workspaceObservers = Self.refreshNotifications.map { name in

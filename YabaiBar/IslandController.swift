@@ -3,8 +3,8 @@ import Observation
 import SwiftUI
 import os
 
-// Coloca la isla sobre el notch, la anima cuando cambian los espacios y, abierta, lleva al escritorio de la
-// tarjeta que se pulse; cualquier otro clic abre el menú.
+// Coloca la isla sobre el notch, la anima cuando cambian los espacios, la abre con el puntero o a petición (⌥I y
+// el gesto de 3 o 4 dedos) y, abierta, lleva al escritorio de la tarjeta que se pulse; cualquier otro clic abre el menú.
 // En reposo la ventana mide justo lo que la isla, para no tapar los clics de la barra de menús alrededor.
 @MainActor
 final class IslandController {
@@ -60,6 +60,11 @@ final class IslandController {
     private var untuckTask: Task<Void, Never>?
     private var openTask: Task<Void, Never>?
     private var pointerWatch: Task<Void, Never>?
+    /// Abierta con toggle() y el puntero todavía sin pasar por la isla: no se cierra por no tenerlo encima
+    private var waitingForPointer = false
+    /// Mientras está abierta con toggle(), Esc y los clics en otras apps la cierran
+    private var escapeKey: GlobalHotKey?
+    private var clickMonitor: Any?
     private var screenObserver: NSObjectProtocol?
     private var occlusionObserver: NSObjectProtocol?
 
@@ -264,6 +269,7 @@ final class IslandController {
     private func close() {
         openTask?.cancel()
         pointerWatch?.cancel()
+        releaseHold()
         let wasOpen = expansion == .open
         expansion = .closed
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
@@ -287,12 +293,43 @@ final class IslandController {
                 try? await Task.sleep(for: Self.pointerCheckInterval)
                 guard !Task.isCancelled, expansion != .closed else { return }
                 if !pointerIsOverIsland() {
+                    if waitingForPointer { continue }
                     close()
                     return
                 }
+                // Abierta con toggle(): desde que llega el puntero, se cierra al salir como con el hover
+                waitingForPointer = false
                 updateHoveredCard()
             }
         }
+    }
+
+    // MARK: - Abrir a petición
+
+    /// ⌥I o 3 o 4 dedos hacia abajo en cualquier app: abre la isla aunque el puntero no esté encima, o la cierra
+    /// si ya está abierta. Abierta así, espera al puntero y se cierra con Esc o con un clic en otra app
+    func toggle() {
+        if expansion == .open { return close() }
+        // Mientras cambia el escritorio no se abre, igual que con el hover
+        guard tuckedAt == nil, !currentSpaces.isEmpty else { return }
+        openTask?.cancel()
+        releaseHold()
+        open()
+        waitingForPointer = !pointerIsOverIsland()
+        escapeKey = GlobalHotKey.escape { [weak self] in self?.close() }
+        // Los clics en la isla son de la app y no llegan aquí: solo los de otras apps
+        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) {
+            [weak self] _ in
+            MainActor.assumeIsolated { self?.close() }
+        }
+        watchPointer()
+    }
+
+    private func releaseHold() {
+        waitingForPointer = false
+        escapeKey = nil
+        if let clickMonitor { NSEvent.removeMonitor(clickMonitor) }
+        clickMonitor = nil
     }
 
     // La isla visible, no la ventana (que mide más por la sombra). El píxel superior de la pantalla cuenta como dentro
@@ -379,6 +416,7 @@ final class IslandController {
         openTask?.cancel()
         pointerWatch?.cancel()
         untuckTask?.cancel()
+        releaseHold()
         expansion = .closed
         tuckedAt = .now
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion

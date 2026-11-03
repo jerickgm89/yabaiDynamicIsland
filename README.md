@@ -34,6 +34,14 @@ La isla vive por encima de la barra de menús, nace del notch como la Dynamic Is
 - Al pasar sobre una tarjeta, esta se ilumina; al hacer clic, macOS cambia a ese escritorio con su animación nativa.
 - El clic derecho, o cualquier clic fuera de las tarjetas, abre el menú: el error de yabai si lo hay, Refrescar, Iniciar al arrancar y Salir.
 
+**Abierta desde cualquier app**
+
+- Desliza 3 o 4 dedos hacia abajo en el trackpad, o pulsa ⌥I, y la isla se abre al momento, aunque el puntero esté lejos. El mismo gesto, o ⌥I, la cierra.
+- Abierta así, también se cierra con Esc o con un clic en otra app. Si llevas el puntero a la isla, desde ahí se comporta como con el hover.
+- Hacia arriba y a los lados no se usan, porque son de Mission Control y del cambio de escritorio. Si activas App Exposé o "Arrastrar con tres dedos", chocarán con el gesto.
+- El gesto se lee con MultitouchSupport, un framework privado de Apple, porque macOS no ofrece una API pública para gestos de 3 o 4 dedos. Una actualización de macOS podría romperlo; ⌥I seguiría funcionando.
+- Mientras YabaiBar está abierta, ⌥I ya no escribe el circunflejo (ˆ).
+
 **Casos especiales**
 
 - Si yabai no responde, la isla muestra "YB ⚠︎" y el menú explica el motivo.
@@ -134,6 +142,7 @@ En la build Debug, la URL `yabaibar://snapshot` (o `yabaibar://snapshot?abierta`
   - `SpacesStore` publica el estado.
   - `NotchGeometry` e `IslandLayout` calculan la geometría.
   - `IslandView` dibuja la isla e `IslandController` la coloca y la anima.
+  - `TrackpadMonitor` (con `FingerSwipeDetector`) y `GlobalHotKey` la abren desde cualquier app.
 - `YabaiBarTests/`: tests con Swift Testing y fixtures JSON reales de yabai. Se ejecutan dentro de la app, que también consulta el yabai real.
 - `assets/`: las capturas de este README.
 
