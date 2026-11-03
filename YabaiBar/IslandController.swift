@@ -13,8 +13,17 @@ final class IslandController {
     static let openAnimation = Animation.spring(response: 0.42, dampingFraction: 1.0)
     static let closeAnimation = Animation.spring(response: 0.45, dampingFraction: 1.0)
     static let reducedAnimation = Animation.easeInOut(duration: 0.2)
+    // Cambio de escritorio: las alas se recogen y vuelven a salir con un rebote suave, sin prisa
+    static let tuckAnimation = Animation.smooth(duration: 0.3)
+    static let untuckAnimation = Animation.spring(response: 0.6, dampingFraction: 0.8)
+    /// Tiempo mínimo recogidas, para que se vea el gesto aunque yabai responda enseguida
+    static let minimumTuck: Duration = .milliseconds(300)
+    /// Si no llega contenido nuevo (gesto cancelado o mismo escritorio), las alas vuelven solas
+    static let tuckTimeout: Duration = .milliseconds(900)
+    /// Fundido de la ventana entera al empezar un cambio de escritorio
+    static let windowFadeDuration: TimeInterval = 0.15
     /// Lo que se espera, tras un cambio, para devolver la ventana a su tamaño justo
-    static let settleDelay: Duration = .milliseconds(700)
+    static let settleDelay: Duration = .milliseconds(1400)
     /// Lo que tiene que estar el puntero encima para que la isla se abra
     static let openDelay: Duration = .milliseconds(300)
     static let pointerCheckInterval: Duration = .milliseconds(120)
@@ -40,9 +49,12 @@ final class IslandController {
     private var currentSpaces: [SpaceSummary] = []
     private var expansion = Expansion.closed
     private var settleTask: Task<Void, Never>?
+    private var tuckedAt: ContinuousClock.Instant?
+    private var untuckTask: Task<Void, Never>?
     private var openTask: Task<Void, Never>?
     private var pointerWatch: Task<Void, Never>?
     private var screenObserver: NSObjectProtocol?
+    private var occlusionObserver: NSObjectProtocol?
 
     init(store: SpacesStore, icons: AppIcons, menu: AppMenu) {
         self.store = store
@@ -69,6 +81,14 @@ final class IslandController {
                 self?.updateGeometry()
                 self?.render()
             }
+        }
+
+        // La ventana deja de verse en cuanto empieza un cambio de escritorio (al iniciar el gesto del trackpad
+        // o al pulsar ⌥N), entre 0,1 y casi 1 s antes de activeSpaceDidChange: ahí se recogen las alas
+        occlusionObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didChangeOcclusionStateNotification, object: panel, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.occlusionChanged() }
         }
     }
 
@@ -101,29 +121,89 @@ final class IslandController {
     private func apply(spaces: [SpaceSummary], failed: Bool) {
         guard let geometry else { return }
         let layout = IslandLayout(spaces: spaces)
-        let previous = currentLayout
         currentLayout = layout
         currentSpaces = spaces
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        let activeChanged = previous.active != nil && layout.active?.index != previous.active?.index
         let description = Self.title(for: spaces, failed: failed)
+        let update = {
+            self.model.centerWidth = geometry.centerWidth
+            self.model.height = geometry.notch.height
+            self.model.layout = layout
+            self.model.expanded = self.expandedLayout(for: spaces, geometry: geometry)
+            self.model.icons = self.icons.icons(for: spaces)
+            self.model.fallbackText = spaces.isEmpty ? description : nil
+            self.model.reduceMotion = reduceMotion
+        }
 
         // La ventana crece antes de animar y se ajusta al terminar, para que la isla nunca se recorte
         growWindow()
-        withAnimation(reduceMotion ? Self.reducedAnimation : Self.changeAnimation) {
-            model.centerWidth = geometry.centerWidth
-            model.height = geometry.notch.height
-            model.layout = layout
-            model.expanded = expandedLayout(for: spaces, geometry: geometry)
-            model.icons = icons.icons(for: spaces)
-            model.fallbackText = spaces.isEmpty ? description : nil
-            model.reduceMotion = reduceMotion
-        }
-        if activeChanged && !reduceMotion {
-            pulse()
+        if let tuckedAt {
+            // Alas recogidas por un cambio de escritorio: el contenido cambia sin animar, porque no se ve,
+            // y después vuelven a salir con el contenido nuevo
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction, update)
+            scheduleUntuck(after: max(.zero, Self.minimumTuck - (ContinuousClock.now - tuckedAt)))
+        } else {
+            withAnimation(reduceMotion ? Self.reducedAnimation : Self.changeAnimation, update)
         }
         settleWindow()
         Logger.app.info("Isla: \(description, privacy: .public) (alas de \(Int(layout.wingWidth)) pt)")
+    }
+
+    // MARK: - Cambio de escritorio
+
+    /// Aviso de macOS de que el cambio de escritorio terminó. Normalmente las alas ya se recogieron al
+    /// empezar (ver occlusionChanged); si no, se recogen ahora. Vuelven a salir cuando llega el contenido nuevo.
+    func spaceDidChange() {
+        tuckWings()
+        if tuckedAt != nil { scheduleUntuck(after: Self.tuckTimeout) }
+    }
+
+    private func occlusionChanged() {
+        if panel.occlusionState.contains(.visible) {
+            // De vuelta en pantalla: si no llega contenido nuevo (gesto cancelado), las alas vuelven solas
+            if tuckedAt != nil { scheduleUntuck(after: Self.tuckTimeout) }
+        } else {
+            tuckWings()
+            // Oculta, SwiftUI deja de dibujarla: al volver, macOS enseñaría un instante el último fotograma
+            // (la isla entera) y luego saltaría a recogida, y durante el gesto se verían fotogramas a medias.
+            // La ventana se apaga con un fundido del propio sistema de ventanas y se enciende ya recogida.
+            if tuckedAt != nil { fadeWindow(to: 0) }
+        }
+    }
+
+    private func fadeWindow(to alpha: CGFloat) {
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Self.windowFadeDuration
+            panel.animator().alphaValue = alpha
+        }
+    }
+
+    private func tuckWings() {
+        guard expansion == .closed, !currentSpaces.isEmpty, tuckedAt == nil else { return }
+        tuckedAt = .now
+        untuckTask?.cancel()
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        withAnimation(reduceMotion ? Self.reducedAnimation : Self.tuckAnimation) { model.wingsTucked = true }
+    }
+
+    private func scheduleUntuck(after delay: Duration) {
+        untuckTask?.cancel()
+        untuckTask = Task {
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
+            untuckWings()
+        }
+    }
+
+    private func untuckWings() {
+        tuckedAt = nil
+        // Recogida, la isla mide lo que el notch y es negra como él: encenderla de golpe no se nota
+        panel.alphaValue = 1
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        withAnimation(reduceMotion ? Self.reducedAnimation : Self.untuckAnimation) { model.wingsTucked = false }
+        settleWindow()
     }
 
     private func expandedLayout(for spaces: [SpaceSummary], geometry: NotchGeometry) -> IslandExpandedLayout {
@@ -222,9 +302,8 @@ final class IslandController {
             guard roomy || expansion == .peek else {
                 return geometry.windowFrame(width: width, height: geometry.notch.height)
             }
-            let growth = max(IslandView.pulseGrowth, IslandView.hoverGrowth)
             return geometry.windowFrame(
-                width: width + growth + 2 * Self.shadowMargin,
+                width: width + IslandView.hoverGrowth + 2 * Self.shadowMargin,
                 height: geometry.notch.height + IslandView.hoverGrowth + Self.shadowMargin
             )
         }
@@ -243,15 +322,6 @@ final class IslandController {
             try? await Task.sleep(for: Self.settleDelay)
             guard !Task.isCancelled, let frame = targetFrame() else { return }
             panel.setFrame(frame, display: true)
-        }
-    }
-
-    // Como un aviso de la Dynamic Island: la isla crece un instante y vuelve con un rebote
-    private func pulse() {
-        withAnimation(.bouncy(duration: 0.25)) { model.pulsing = true }
-        Task {
-            try? await Task.sleep(for: .milliseconds(180))
-            withAnimation(.bouncy(duration: 0.35)) { model.pulsing = false }
         }
     }
 
@@ -337,6 +407,8 @@ extension IslandController {
         Task {
             for round in 0..<rounds {
                 let focused = base[round % base.count].index
+                // Como un cambio real: primero el aviso de macOS (recoge las alas) y luego el contenido
+                spaceDidChange()
                 apply(spaces: base.map { SpaceSummary(index: $0.index, isFocused: $0.index == focused, apps: $0.apps) }, failed: false)
                 try? await Task.sleep(for: interval)
             }

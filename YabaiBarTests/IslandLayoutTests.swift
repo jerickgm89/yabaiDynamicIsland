@@ -93,14 +93,24 @@ struct IslandExpandedLayoutTests {
 
 @MainActor
 struct IslandModelTests {
-    // 224 de cuerpo + 2 alas de 90 + 2 × 6 de esquinas cóncavas; el pulso suma 8
-    @Test func islandWidthAddsWingsCornersAndPulse() {
+    // 224 de cuerpo + 2 alas de 90 + 2 × 6 de esquinas cóncavas; con las alas recogidas, solo cuerpo y esquinas
+    @Test func tuckedWingsShrinkTheIslandToTheNotch() {
         let model = IslandModel()
         model.centerWidth = 224
         model.layout = IslandLayout(spaces: [summary(1, apps: 2, focused: true)])
         #expect(model.islandWidth == 416)
-        model.pulsing = true
-        #expect(model.islandWidth == 416 + IslandView.pulseGrowth)
+        model.wingsTucked = true
+        #expect(model.islandWidth == 236)
+    }
+
+    // Con "Reducir movimiento" las alas no se recogen: el contenido solo se funde
+    @Test func reduceMotionKeepsTheWingsInPlace() {
+        let model = IslandModel()
+        model.centerWidth = 224
+        model.layout = IslandLayout(spaces: [summary(1, apps: 2, focused: true)])
+        model.reduceMotion = true
+        model.wingsTucked = true
+        #expect(model.islandWidth == 416)
     }
 
     // Abierta manda el layout de las tarjetas, más las esquinas superiores cóncavas de 19

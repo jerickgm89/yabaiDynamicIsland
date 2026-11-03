@@ -42,9 +42,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let center = NSWorkspace.shared.notificationCenter
         workspaceObservers = Self.refreshNotifications.map { name in
-            center.addObserver(forName: name, object: nil, queue: .main) { _ in
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated {
                     Logger.app.info("Aviso: \(name.rawValue, privacy: .public)")
+                    // Al cambiar de escritorio la isla recoge las alas al momento, sin esperar a yabai
+                    if name == NSWorkspace.activeSpaceDidChangeNotification {
+                        self?.island?.spaceDidChange()
+                    }
                     store.requestRefresh()
                 }
             }

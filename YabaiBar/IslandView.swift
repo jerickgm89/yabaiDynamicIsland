@@ -1,7 +1,7 @@
 import SwiftUI
 
 // Estado que dibuja la isla. IslandController lo cambia dentro de withAnimation para que SwiftUI anime
-// los cambios: el número que viaja de un ala a otra, el ancho de las alas y los íconos.
+// los cambios: las alas que se recogen y vuelven a salir al cambiar de escritorio, el hover y la apertura.
 @MainActor
 @Observable
 final class IslandModel {
@@ -12,7 +12,8 @@ final class IslandModel {
     var icons: [Int32: NSImage] = [:]
     /// "YB" o "YB ⚠︎" cuando no hay espacios que mostrar
     var fallbackText: String? = "YB"
-    var pulsing = false
+    /// Cambio de escritorio en curso: las alas se recogen hacia el notch mientras cambia el contenido
+    var wingsTucked = false
     /// El puntero está encima: la isla crece un poco antes de abrirse
     var hovering = false
     /// Cada vez que cambia, el trackpad vibra (sensoryFeedback)
@@ -20,10 +21,15 @@ final class IslandModel {
     var isExpanded = false
     var reduceMotion = false
 
+    /// Ancho de cada ala tal como se ve ahora; con "Reducir movimiento" las alas no se recogen, solo se funden
+    var visibleWingWidth: CGFloat {
+        wingsTucked && !reduceMotion ? 0 : layout.wingWidth
+    }
+
     var islandWidth: CGFloat {
         if isExpanded { return expanded.bodyWidth + 2 * IslandView.openTopRadius }
-        return centerWidth + 2 * layout.wingWidth + 2 * IslandView.closedTopRadius
-            + (pulsing ? IslandView.pulseGrowth : 0) + (hovering ? IslandView.hoverGrowth : 0)
+        return centerWidth + 2 * visibleWingWidth + 2 * IslandView.closedTopRadius
+            + (hovering ? IslandView.hoverGrowth : 0)
     }
 
     var islandHeight: CGFloat {
@@ -40,27 +46,25 @@ struct IslandView: View {
     static let closedBottomRadius: CGFloat = 14
     static let openTopRadius: CGFloat = 19
     static let openBottomRadius: CGFloat = 24
-    /// Lo que crece la isla durante el pulso al cambiar de espacio
-    static let pulseGrowth: CGFloat = 8
     /// Lo que crece la isla al pasar el puntero, antes de abrirse
     static let hoverGrowth: CGFloat = 8
-    /// Los números se dibujan todos a 12 pt y el activo se escala: el tamaño de letra no se anima, la escala sí
+    /// El número activo se dibuja a 12 pt y se escala, igual que los inactivos
     static let activeNumberScale: CGFloat = 17.0 / 12.0
 
     let model: IslandModel
-    @Namespace private var numbers
 
     var body: some View {
-        let wing = model.layout.wingWidth + (model.pulsing ? Self.pulseGrowth / 2 : 0)
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                leftWing.frame(width: wing)
+                leftWing.frame(width: model.visibleWingWidth)
                 Color.clear.frame(width: model.centerWidth)
-                rightWing.frame(width: wing)
+                rightWing.frame(width: model.visibleWingWidth)
             }
             .frame(height: model.height)
-            // Recogida (pantalla completa), las alas miden 0 y su contenido se desvanece
-            .opacity(model.layout.isCollapsed ? 0 : 1)
+            // Recogidas (cambio de escritorio o pantalla completa), las alas se encogen hacia el notch
+            // y su contenido se desvanece; al volver a salir, crece y aparece
+            .opacity(model.layout.isCollapsed || model.wingsTucked ? 0 : 1)
+            .scaleEffect(model.wingsTucked && !model.reduceMotion ? 0.85 : 1)
             if model.isExpanded {
                 cards.padding(.top, IslandExpandedLayout.gapBelowNotch)
             }
@@ -102,19 +106,19 @@ struct IslandView: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("\(space.index)")
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(accent)
                 Spacer(minLength: 0)
                 if (1...9).contains(space.index) {
                     Text("⌥\(space.index)")
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(.white.opacity(0.45))
                 }
             }
             HStack(spacing: 4) {
                 if space.apps.isEmpty {
                     Text("Vacío")
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.white.opacity(0.35))
                 } else {
                     ForEach(space.apps.prefix(IslandExpandedLayout.maxIcons), id: \.pid) { app in
@@ -124,7 +128,7 @@ struct IslandView: View {
                     }
                     if space.apps.count > IslandExpandedLayout.maxIcons {
                         Text("+\(space.apps.count - IslandExpandedLayout.maxIcons)")
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(.white.opacity(0.7))
                     }
                 }
@@ -141,7 +145,7 @@ struct IslandView: View {
         HStack(spacing: 0) {
             if let fallbackText = model.fallbackText {
                 Text(fallbackText)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
             } else if let active = model.layout.active {
                 number(for: active, isActive: true)
@@ -157,7 +161,7 @@ struct IslandView: View {
                 .padding(.leading, model.layout.shownApps.isEmpty ? 0 : IslandLayout.numberGap)
                 if model.layout.overflow > 0 {
                     Text("+\(model.layout.overflow)")
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.7))
                         .contentTransition(.numericText())
                         .frame(width: IslandLayout.overflowWidth)
@@ -186,36 +190,19 @@ struct IslandView: View {
         .frame(maxWidth: .infinity, alignment: .trailing)
     }
 
-    // El mismo número vive en el ala izquierda o en la derecha; matchedGeometryEffect lo hace viajar
-    // de una a otra al cambiar de espacio, pasando por detrás del notch
     private func number(for space: SpaceSummary, isActive: Bool) -> some View {
         Text("\(space.index)")
-            .font(.system(size: 12, weight: .bold, design: .rounded))
+            .font(.system(size: 12, weight: .bold))
             .lineLimit(1)
             .minimumScaleFactor(0.7)
             .foregroundStyle(isActive ? SpaceAccent.color(for: space.index) : .white.opacity(space.apps.isEmpty ? 0.32 : 0.78))
             .scaleEffect(isActive ? Self.activeNumberScale : 1)
             .frame(width: isActive ? IslandLayout.numberWidth : model.layout.tokenWidth)
-            .modifier(TravelingNumber(id: space.index, namespace: numbers, enabled: !model.reduceMotion))
     }
 
     // Los íconos aparecen difuminándose, uno detrás de otro; con "Reducir movimiento", solo un fundido
     private func iconTransition(delay: Double) -> AnyTransition {
         model.reduceMotion ? .opacity : AnyTransition(.blurReplace).animation(.smooth(duration: 0.25).delay(delay))
-    }
-}
-
-private struct TravelingNumber: ViewModifier {
-    let id: Int
-    let namespace: Namespace.ID
-    let enabled: Bool
-
-    func body(content: Content) -> some View {
-        if enabled {
-            content.matchedGeometryEffect(id: id, in: namespace)
-        } else {
-            content
-        }
     }
 }
 
