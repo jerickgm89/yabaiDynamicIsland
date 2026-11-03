@@ -9,7 +9,15 @@ struct ModelDecodingTests {
           "first-window":10,"last-window":11,"has-focus":true,"is-visible":true,"is-native-fullscreen":false}]
         """
         let spaces = try JSONDecoder().decode([YabaiSpace].self, from: Data(json.utf8))
-        #expect(spaces == [YabaiSpace(id: 3, index: 1, display: 1, windows: [10, 11], hasFocus: true, isVisible: true)])
+        #expect(spaces == [YabaiSpace(id: 3, index: 1, display: 1, windows: [10, 11], hasFocus: true, isVisible: true, isNativeFullscreen: false)])
+    }
+
+    @Test func fullscreenFlagIsOptional() throws {
+        let json = """
+        [{"id":3,"index":1,"display":1,"windows":[],"has-focus":true,"is-visible":true}]
+        """
+        let spaces = try JSONDecoder().decode([YabaiSpace].self, from: Data(json.utf8))
+        #expect(spaces.first?.isNativeFullscreen == nil)
     }
 
     @Test func windowDecodesHyphenatedKeysAndIgnoresExtraFields() throws {

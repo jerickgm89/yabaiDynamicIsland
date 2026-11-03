@@ -23,6 +23,8 @@ struct IslandLayout: Equatable {
     let wingWidth: CGFloat
     /// Ancho de cada espacio inactivo; se estrecha si hay tantos que no caben en el ala máxima
     let tokenWidth: CGFloat
+    /// El espacio activo es una app a pantalla completa: la isla se recoge al tamaño del notch para no estorbar
+    let isCollapsed: Bool
 
     var shownApps: ArraySlice<SpaceApp> { active?.apps.prefix(Self.maxIcons) ?? [] }
     var overflow: Int { max(0, (active?.apps.count ?? 0) - Self.maxIcons) }
@@ -30,10 +32,11 @@ struct IslandLayout: Equatable {
     init(spaces: [SpaceSummary]) {
         active = spaces.first(where: \.isFocused)
         inactive = spaces.filter { !$0.isFocused }
+        isCollapsed = active?.isFullscreen ?? false
 
         let left = Self.leftWidth(appCount: active?.apps.count ?? 0)
         let right = Self.innerPadding + CGFloat(inactive.count) * Self.tokenWidth + Self.outerPadding
-        wingWidth = min(max(left, right, Self.minWingWidth), Self.maxWingWidth)
+        wingWidth = isCollapsed ? 0 : min(max(left, right, Self.minWingWidth), Self.maxWingWidth)
 
         let available = wingWidth - Self.innerPadding - Self.outerPadding
         tokenWidth = inactive.isEmpty

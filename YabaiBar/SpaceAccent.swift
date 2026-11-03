@@ -1,6 +1,6 @@
 import SwiftUI
 
-// Color de cada espacio: los mismos acentos, en el mismo orden, que el tema liquid-glass de SketchyBar
+// Color de cada espacio: los acentos del tema liquid-glass, en el mismo orden
 enum SpaceAccent {
     static let palette: [UInt32] = [
         0x8AB4FF, 0x7EE787, 0xFFB86C, 0xD2A8FF, 0x7FE0D4, 0xFF9CB4, 0xFFD98A, 0x86CEFA, 0xC6C9FF, 0xFF8A80,

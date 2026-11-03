@@ -59,6 +59,8 @@ struct IslandView: View {
                 rightWing.frame(width: wing)
             }
             .frame(height: model.height)
+            // Recogida (pantalla completa), las alas miden 0 y su contenido se desvanece
+            .opacity(model.layout.isCollapsed ? 0 : 1)
             if model.isExpanded {
                 cards.padding(.top, IslandExpandedLayout.gapBelowNotch)
             }

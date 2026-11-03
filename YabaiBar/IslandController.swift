@@ -4,7 +4,7 @@ import SwiftUI
 import os
 
 // Coloca la isla sobre el notch, la anima cuando cambian los espacios y abre el menú con cualquier clic.
-// En reposo la ventana mide justo lo que la isla, para no tapar los clics de SketchyBar alrededor.
+// En reposo la ventana mide justo lo que la isla, para no tapar los clics de la barra de menús alrededor.
 @MainActor
 final class IslandController {
     // Valores de Atoll para el contenido, el hover, la apertura y el cierre

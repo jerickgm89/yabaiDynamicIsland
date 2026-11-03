@@ -51,6 +51,13 @@ struct SpaceGrouperTests {
         #expect(result.map { $0.apps.map(\.name) } == [["Safari"], [], ["Xcode"]])
     }
 
+    @Test func passesTheFullscreenFlagThrough() {
+        var fullscreen = makeSpace(2, focused: true)
+        fullscreen.isNativeFullscreen = true
+        let result = SpaceGrouper.group(spaces: [makeSpace(1), fullscreen], windows: [])
+        #expect(result.map(\.isFullscreen) == [false, true])
+    }
+
     @Test func stripsInvisibleMarksFromAppNames() throws {
         let windows = [makeWindow(1, pid: 10, app: "\u{200E}WhatsApp", space: 1)]
         let result = SpaceGrouper.group(spaces: [makeSpace(1, focused: true)], windows: windows)

@@ -9,11 +9,14 @@ struct YabaiSpace: Decodable, Equatable, Sendable {
     let windows: [Int]
     let hasFocus: Bool
     let isVisible: Bool
+    /// Espacio de una app a pantalla completa nativa; opcional para tolerar versiones de yabai sin el campo
+    var isNativeFullscreen: Bool? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, index, display, windows
         case hasFocus = "has-focus"
         case isVisible = "is-visible"
+        case isNativeFullscreen = "is-native-fullscreen"
     }
 }
 

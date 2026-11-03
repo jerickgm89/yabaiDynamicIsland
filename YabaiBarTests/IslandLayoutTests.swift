@@ -8,6 +8,25 @@ private func summary(_ index: Int, apps: Int, focused: Bool = false) -> SpaceSum
 }
 
 struct IslandLayoutTests {
+    @Test func fullscreenActiveSpaceCollapsesTheIslandToTheNotch() {
+        var fullscreen = summary(2, apps: 1, focused: true)
+        fullscreen.isFullscreen = true
+        let layout = IslandLayout(spaces: [summary(1, apps: 1), fullscreen, summary(3, apps: 0)])
+        #expect(layout.isCollapsed)
+        #expect(layout.wingWidth == 0)
+        // Al abrirla, las tarjetas siguen teniendo todos los espacios
+        #expect(layout.active?.index == 2)
+        #expect(layout.inactive.map(\.index) == [1, 3])
+    }
+
+    @Test func fullscreenInactiveSpaceDoesNotCollapse() {
+        var fullscreen = summary(3, apps: 1)
+        fullscreen.isFullscreen = true
+        let layout = IslandLayout(spaces: [summary(1, apps: 1, focused: true), fullscreen])
+        #expect(!layout.isCollapsed)
+        #expect(layout.wingWidth == IslandLayout.minWingWidth)
+    }
+
     // 12 + 20 de número + 8 hacia el notch, + 6 y 20 por el primer ícono, 24 por cada uno más, 26 por "+n"
     @Test(arguments: [(0, 40.0), (1, 66.0), (2, 90.0), (3, 114.0), (5, 140.0)])
     func leftWingGrowsWithTheActiveSpaceApps(apps: Int, width: Double) {
@@ -102,7 +121,7 @@ struct IslandModelTests {
 
 struct SpaceAccentTests {
     @Test(arguments: [(1, 0x8AB4FF as UInt32), (2, 0x7EE787), (10, 0xFF8A80), (11, 0x8AB4FF), (0, 0xFF8A80)])
-    func followsTheSketchyBarPaletteAndWraps(index: Int, hex: UInt32) {
+    func followsTheLiquidGlassPaletteAndWraps(index: Int, hex: UInt32) {
         #expect(SpaceAccent.hex(for: index) == hex)
     }
 }

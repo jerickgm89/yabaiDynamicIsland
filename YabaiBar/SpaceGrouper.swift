@@ -9,6 +9,7 @@ struct SpaceSummary: Equatable, Sendable, Identifiable {
     let index: Int
     let isFocused: Bool
     let apps: [SpaceApp]
+    var isFullscreen = false
 
     var id: Int { index }
 }
@@ -32,7 +33,10 @@ enum SpaceGrouper {
                 let apps = visible
                     .filter { $0.space == space.index && seen.insert($0.pid).inserted }
                     .map { SpaceApp(pid: $0.pid, name: $0.app.trimmingCharacters(in: invisibleCharacters)) }
-                return SpaceSummary(index: space.index, isFocused: space.hasFocus, apps: apps)
+                return SpaceSummary(
+                    index: space.index, isFocused: space.hasFocus, apps: apps,
+                    isFullscreen: space.isNativeFullscreen ?? false
+                )
             }
     }
 }
