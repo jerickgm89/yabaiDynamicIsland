@@ -48,6 +48,19 @@ struct IslandLayoutTests {
     }
 }
 
+@MainActor
+struct IslandModelTests {
+    // 224 de cuerpo + 2 alas de 90 + 2 × 6 de esquinas cóncavas; el pulso suma 8
+    @Test func islandWidthAddsWingsCornersAndPulse() {
+        let model = IslandModel()
+        model.centerWidth = 224
+        model.layout = IslandLayout(spaces: [summary(1, apps: 2, focused: true)])
+        #expect(model.islandWidth == 416)
+        model.pulsing = true
+        #expect(model.islandWidth == 416 + IslandView.pulseGrowth)
+    }
+}
+
 struct SpaceAccentTests {
     @Test(arguments: [(1, 0x8AB4FF as UInt32), (2, 0x7EE787), (10, 0xFF8A80), (11, 0x8AB4FF), (0, 0xFF8A80)])
     func followsTheSketchyBarPaletteAndWraps(index: Int, hex: UInt32) {

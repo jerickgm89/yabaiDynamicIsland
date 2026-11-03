@@ -3,25 +3,42 @@ import Observation
 import SwiftUI
 import os
 
-// Coloca la isla sobre el notch, la redibuja cuando cambian los espacios y abre el menú con cualquier clic.
-// La ventana mide justo lo que la isla, para no tapar los clics de SketchyBar alrededor.
+// Coloca la isla sobre el notch, la anima cuando cambian los espacios y abre el menú con cualquier clic.
+// En reposo la ventana mide justo lo que la isla, para no tapar los clics de SketchyBar alrededor.
 @MainActor
 final class IslandController {
+    // Valores de Atoll para el contenido y para el pulso
+    static let changeAnimation = Animation.spring(response: 0.35, dampingFraction: 0.8)
+    static let reducedAnimation = Animation.easeInOut(duration: 0.2)
+    /// Lo que se espera, tras un cambio, para devolver la ventana a su tamaño justo
+    static let settleDelay: Duration = .milliseconds(700)
+
     private let panel = IslandPanel(contentRect: .zero)
     private let hosting: IslandHostingView
+    private let model = IslandModel()
     private let store: SpacesStore
     private let icons: AppIcons
     private var geometry: NotchGeometry?
+    // Copia del layout dibujado. No se lee del modelo dentro de render(): withObservationTracking
+    // registraría el modelo y cada cambio volvería a llamar a render() sin fin
+    private var currentLayout = IslandLayout(spaces: [])
+    private var settleTask: Task<Void, Never>?
     private var screenObserver: NSObjectProtocol?
 
     init(store: SpacesStore, icons: AppIcons, menu: AppMenu) {
         self.store = store
         self.icons = icons
-        hosting = IslandHostingView(rootView: IslandView(layout: IslandLayout(spaces: []), centerWidth: 0, icons: [:], fallbackText: nil))
+        hosting = IslandHostingView(rootView: IslandView(model: model))
         // Que la vista no cambie el tamaño de la ventana: el marco lo decide NotchGeometry
         hosting.sizingOptions = []
         hosting.menuOnClick = menu.menu
-        panel.contentView = hosting
+        // El hosting va dentro de un contenedor y no como contentView: si lo es, intenta ajustar (y animar)
+        // el tamaño de la ventana a la isla, choca con nuestros setFrame y, con cambios de espacio muy
+        // seguidos, AppKit lanza una excepción por demasiadas pasadas de restricciones y cierra la app
+        let container = NSView()
+        hosting.autoresizingMask = [.width, .height]
+        container.addSubview(hosting)
+        panel.contentView = container
 
         updateGeometry()
         observeStore()
@@ -57,20 +74,55 @@ final class IslandController {
     }
 
     private func render() {
-        guard let geometry else { return }
         let failed = store.lastError != nil
-        let spaces = failed ? [] : store.spaces
+        apply(spaces: failed ? [] : store.spaces, failed: failed)
+    }
+
+    private func apply(spaces: [SpaceSummary], failed: Bool) {
+        guard let geometry else { return }
         let layout = IslandLayout(spaces: spaces)
+        let previous = currentLayout
+        currentLayout = layout
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let activeChanged = previous.active != nil && layout.active?.index != previous.active?.index
         let description = Self.title(for: spaces, failed: failed)
 
-        hosting.rootView = IslandView(
-            layout: layout,
-            centerWidth: geometry.centerWidth,
-            icons: icons.icons(for: spaces),
-            fallbackText: spaces.isEmpty ? description : nil
-        )
-        panel.setFrame(geometry.windowFrame(wingWidth: layout.wingWidth, topRadius: IslandView.closedTopRadius), display: true)
+        // La ventana crece antes de animar (con sitio para el pulso) y se ajusta al terminar,
+        // para que la isla nunca se recorte a mitad de animación
+        let roomyWing = max(layout.wingWidth, previous.wingWidth) + IslandView.pulseGrowth / 2
+        panel.setFrame(geometry.windowFrame(wingWidth: roomyWing, topRadius: IslandView.closedTopRadius), display: true)
+
+        withAnimation(reduceMotion ? Self.reducedAnimation : Self.changeAnimation) {
+            model.centerWidth = geometry.centerWidth
+            model.height = geometry.notch.height
+            model.layout = layout
+            model.icons = icons.icons(for: spaces)
+            model.fallbackText = spaces.isEmpty ? description : nil
+            model.reduceMotion = reduceMotion
+        }
+        if activeChanged && !reduceMotion {
+            pulse()
+        }
+        settleWindow(to: geometry.windowFrame(wingWidth: layout.wingWidth, topRadius: IslandView.closedTopRadius))
         Logger.app.info("Isla: \(description, privacy: .public) (alas de \(Int(layout.wingWidth)) pt)")
+    }
+
+    // Como un aviso de la Dynamic Island: la isla crece un instante y vuelve con un rebote
+    private func pulse() {
+        withAnimation(.bouncy(duration: 0.25)) { model.pulsing = true }
+        Task {
+            try? await Task.sleep(for: .milliseconds(180))
+            withAnimation(.bouncy(duration: 0.35)) { model.pulsing = false }
+        }
+    }
+
+    private func settleWindow(to frame: NSRect) {
+        settleTask?.cancel()
+        settleTask = Task {
+            try? await Task.sleep(for: Self.settleDelay)
+            guard !Task.isCancelled else { return }
+            panel.setFrame(frame, display: true)
+        }
     }
 
     // Texto equivalente a la isla ("1 [2] 3 4"): se muestra si no hay espacios y se usa en el log
@@ -105,9 +157,25 @@ final class IslandHostingView: NSHostingView<IslandView> {
 
 #if DEBUG
 extension IslandController {
+    /// Simula cambios de espacio activo muy seguidos, como pasar rápido entre escritorios,
+    /// sin tocar los espacios reales. Al terminar vuelve a dibujar el estado real.
+    func stressTest(rounds: Int = 40, interval: Duration = .milliseconds(40)) {
+        let base = store.spaces
+        guard base.count > 1 else { return }
+        Task {
+            for round in 0..<rounds {
+                let focused = base[round % base.count].index
+                apply(spaces: base.map { SpaceSummary(index: $0.index, isFocused: $0.index == focused, apps: $0.apps) }, failed: false)
+                try? await Task.sleep(for: interval)
+            }
+            render()
+            Logger.app.info("Prueba de estrés terminada: \(rounds) cambios")
+        }
+    }
+
     /// Guarda la isla como PNG ampliado y sobre un fondo gris, para revisarla sin mirar la pantalla.
     func saveSnapshot() {
-        let size = panel.frame.size
+        let size = CGSize(width: model.islandWidth, height: model.height)
         let content = hosting.rootView
             .frame(width: size.width, height: size.height)
             .padding(16)
@@ -132,6 +200,7 @@ extension IslandController {
         image.draw(in: NSRect(origin: .zero, size: image.size))
         NSGraphicsContext.restoreGraphicsState()
         guard let png = bitmap.representation(using: .png, properties: [:]) else { return }
+
         let directory = URL.cachesDirectory.appending(path: "com.jerickdev.yabaibar")
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

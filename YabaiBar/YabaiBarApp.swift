@@ -68,6 +68,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             #if DEBUG
             case "snapshot":
                 island?.saveSnapshot()
+            case "stress":
+                island?.stressTest()
             #endif
             default:
                 Logger.app.info("URL sin acción: \(url.absoluteString, privacy: .public)")

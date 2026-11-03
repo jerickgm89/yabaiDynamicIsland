@@ -1,54 +1,76 @@
 import SwiftUI
 
+// Estado que dibuja la isla. IslandController lo cambia dentro de withAnimation para que SwiftUI anime
+// los cambios: el número que viaja de un ala a otra, el ancho de las alas y los íconos.
+@MainActor
+@Observable
+final class IslandModel {
+    var layout = IslandLayout(spaces: [])
+    var centerWidth: CGFloat = 0
+    var height: CGFloat = 0
+    var icons: [Int32: NSImage] = [:]
+    /// "YB" o "YB ⚠︎" cuando no hay espacios que mostrar
+    var fallbackText: String? = "YB"
+    var pulsing = false
+    var reduceMotion = false
+
+    var islandWidth: CGFloat {
+        centerWidth + 2 * layout.wingWidth + 2 * IslandView.closedTopRadius + (pulsing ? IslandView.pulseGrowth : 0)
+    }
+}
+
 // La isla cerrada: ala izquierda con el espacio activo, hueco del notch y ala derecha con los inactivos.
 // Como en la Dynamic Island, el contenido de cada ala se pega a su borde exterior.
 struct IslandView: View {
     // Radios de la isla cerrada, los mismos que usa Atoll
     static let closedTopRadius: CGFloat = 6
     static let closedBottomRadius: CGFloat = 14
+    /// Lo que crece la isla durante el pulso al cambiar de espacio
+    static let pulseGrowth: CGFloat = 8
+    /// Los números se dibujan todos a 12 pt y el activo se escala: el tamaño de letra no se anima, la escala sí
+    static let activeNumberScale: CGFloat = 17.0 / 12.0
 
-    let layout: IslandLayout
-    let centerWidth: CGFloat
-    let icons: [Int32: NSImage]
-    /// "YB" o "YB ⚠︎" cuando no hay espacios que mostrar
-    let fallbackText: String?
+    let model: IslandModel
+    @Namespace private var numbers
 
     var body: some View {
+        let wing = model.layout.wingWidth + (model.pulsing ? Self.pulseGrowth / 2 : 0)
         HStack(spacing: 0) {
-            leftWing.frame(width: layout.wingWidth)
-            Color.clear.frame(width: centerWidth)
-            rightWing.frame(width: layout.wingWidth)
+            leftWing.frame(width: wing)
+            Color.clear.frame(width: model.centerWidth)
+            rightWing.frame(width: wing)
         }
-        .frame(maxHeight: .infinity)
         .padding(.horizontal, Self.closedTopRadius)
+        .frame(width: model.islandWidth, height: model.height)
         .background(IslandShape(topRadius: Self.closedTopRadius, bottomRadius: Self.closedBottomRadius).fill(.black))
+        // La ventana puede ser más ancha mientras dura una animación: la isla va centrada y pegada arriba.
+        // Mínimo 0 para no imponer ningún tamaño a la ventana
+        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .top)
     }
 
     private var leftWing: some View {
         HStack(spacing: 0) {
-            if let fallbackText {
+            if let fallbackText = model.fallbackText {
                 Text(fallbackText)
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white)
-            } else if let active = layout.active {
-                Text("\(active.index)")
-                    .font(.system(size: 17, weight: .bold, design: .rounded))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .foregroundStyle(SpaceAccent.color(for: active.index))
-                    .frame(width: IslandLayout.numberWidth)
+            } else if let active = model.layout.active {
+                number(for: active, isActive: true)
                 HStack(spacing: IslandLayout.iconGap) {
-                    ForEach(layout.shownApps, id: \.pid) { app in
-                        Image(nsImage: icons[app.pid] ?? NSImage())
+                    ForEach(model.layout.shownApps, id: \.pid) { app in
+                        let position = model.layout.shownApps.firstIndex(of: app) ?? 0
+                        Image(nsImage: model.icons[app.pid] ?? NSImage())
                             .resizable()
                             .frame(width: IslandLayout.iconSize, height: IslandLayout.iconSize)
+                            .transition(iconTransition(delay: Double(position) * 0.04))
                     }
                 }
-                .padding(.leading, layout.shownApps.isEmpty ? 0 : IslandLayout.numberGap)
-                if layout.overflow > 0 {
-                    Text("+\(layout.overflow)")
+                .padding(.leading, model.layout.shownApps.isEmpty ? 0 : IslandLayout.numberGap)
+                if model.layout.overflow > 0 {
+                    Text("+\(model.layout.overflow)")
                         .font(.system(size: 10, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white.opacity(0.7))
+                        .contentTransition(.numericText())
                         .frame(width: IslandLayout.overflowWidth)
                         .padding(.leading, IslandLayout.iconGap)
                 }
@@ -60,37 +82,70 @@ struct IslandView: View {
 
     private var rightWing: some View {
         HStack(spacing: 0) {
-            ForEach(layout.inactive) { space in
+            ForEach(model.layout.inactive) { space in
                 VStack(spacing: 2) {
-                    Text("\(space.index)")
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                        .foregroundStyle(.white.opacity(space.apps.isEmpty ? 0.32 : 0.78))
+                    number(for: space, isActive: false)
                     Circle()
                         .fill(SpaceAccent.color(for: space.index))
                         .frame(width: 4, height: 4)
                         .opacity(space.apps.isEmpty ? 0 : 1)
                 }
-                .frame(width: layout.tokenWidth)
+                .frame(width: model.layout.tokenWidth)
             }
         }
         .padding(.trailing, IslandLayout.outerPadding)
         .frame(maxWidth: .infinity, alignment: .trailing)
     }
+
+    // El mismo número vive en el ala izquierda o en la derecha; matchedGeometryEffect lo hace viajar
+    // de una a otra al cambiar de espacio, pasando por detrás del notch
+    private func number(for space: SpaceSummary, isActive: Bool) -> some View {
+        Text("\(space.index)")
+            .font(.system(size: 12, weight: .bold, design: .rounded))
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .foregroundStyle(isActive ? SpaceAccent.color(for: space.index) : .white.opacity(space.apps.isEmpty ? 0.32 : 0.78))
+            .scaleEffect(isActive ? Self.activeNumberScale : 1)
+            .frame(width: isActive ? IslandLayout.numberWidth : model.layout.tokenWidth)
+            .modifier(TravelingNumber(id: space.index, namespace: numbers, enabled: !model.reduceMotion))
+    }
+
+    // Los íconos aparecen difuminándose, uno detrás de otro; con "Reducir movimiento", solo un fundido
+    private func iconTransition(delay: Double) -> AnyTransition {
+        model.reduceMotion ? .opacity : AnyTransition(.blurReplace).animation(.smooth(duration: 0.25).delay(delay))
+    }
+}
+
+private struct TravelingNumber: ViewModifier {
+    let id: Int
+    let namespace: Namespace.ID
+    let enabled: Bool
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content.matchedGeometryEffect(id: id, in: namespace)
+        } else {
+            content
+        }
+    }
 }
 
 #Preview {
+    let model = IslandModel()
     let app = { (pid: Int32) in SpaceApp(pid: pid, name: "App") }
-    let layout = IslandLayout(spaces: [
+    model.layout = IslandLayout(spaces: [
         SpaceSummary(index: 1, isFocused: false, apps: [app(1)]),
         SpaceSummary(index: 2, isFocused: true, apps: [app(2), app(3)]),
         SpaceSummary(index: 3, isFocused: false, apps: [app(4)]),
         SpaceSummary(index: 4, isFocused: false, apps: []),
     ])
+    model.centerWidth = 224
+    model.height = 38
+    model.fallbackText = nil
     let icon = NSWorkspace.shared.icon(forFile: "/Applications/Safari.app")
-    IslandView(layout: layout, centerWidth: 224, icons: [2: icon, 3: icon], fallbackText: nil)
-        .frame(width: 224 + 2 * layout.wingWidth + 12, height: 38)
+    model.icons = [2: icon, 3: icon]
+    return IslandView(model: model)
+        .frame(width: model.islandWidth + 16, height: 38)
         .padding()
         .background(Color(white: 0.17))
 }
