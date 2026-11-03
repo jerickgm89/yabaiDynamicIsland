@@ -186,3 +186,7 @@ En la build Debug, la URL `yabaibar://snapshot` (o `yabaibar://snapshot?abierta`
 Atoll se publica con licencia GPL-3.0 y deriva de [boring.notch](https://github.com/TheBoredTeam/boring.notch), así que también va nuestro agradecimiento a TheBoredTeam. YabaiBar toma de ellos ideas, medidas y curvas de animación, pero no copia su código: toda la implementación está escrita desde cero.
 
 **[yabai](https://github.com/asmvik/yabai)**, que hace posible todo lo demás.
+
+## Licencia
+
+YabaiBar se publica con licencia [MIT](LICENSE): puedes usarla, modificarla y redistribuirla, siempre que conserves el aviso de copyright.
