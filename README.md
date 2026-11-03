@@ -4,6 +4,14 @@ Una isla alrededor del notch del Mac que muestra los espacios de [yabai](https:/
 
 La isla vive por encima de la barra de menús, nace del notch como la Dynamic Island y está en todos los escritorios. Su diseño se inspira en [Atoll](https://github.com/Ebullioscopic/Atoll) (ver [Agradecimientos](#agradecimientos)).
 
+<p align="center">
+  <img src="docs/images/isla-cerrada.png" width="640" alt="La isla cerrada: el espacio 3 activo con su app a la izquierda del notch y los espacios 1, 2 y 4 a la derecha">
+</p>
+
+<p align="center">
+  <img src="docs/images/isla-abierta.png" width="820" alt="La isla abierta: una tarjeta por espacio con su número, sus apps y su atajo, con el puntero sobre la tarjeta 1">
+</p>
+
 ## Qué hace
 
 **Cerrada (siempre visible)**
