@@ -26,7 +26,7 @@ final class NowPlayingStore {
     init(adapter: MediaRemoteAdapter?, settings: AppSettings) {
         self.adapter = adapter
         self.settings = settings
-        if adapter == nil { Logger.media.error("Música: la app no trae mediaremote-adapter") }
+        if adapter == nil { Logger.media.info("Música: sin mediaremote-adapter (no viene en la app, o son los tests)") }
         observeSettings()
     }
 

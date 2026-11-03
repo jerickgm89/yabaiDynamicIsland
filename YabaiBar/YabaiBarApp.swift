@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var trackpad: TrackpadMonitor?
     private var workspaceObservers: [NSObjectProtocol] = []
     private var refreshToken: Int32 = NOTIFY_TOKEN_INVALID
+    private var terminationSignal: DispatchSourceSignal?
 
     // Las señales de yabai y los atajos de skhd avisan con `notifyutil -p com.jerickdev.yabaibar.refresh`.
     // La notificación llega a la instancia que está corriendo; una URL pasaría por LaunchServices,
@@ -45,7 +46,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.settings = settings
         let menu = AppMenu(store: store, launchAtLogin: LaunchAtLogin(), settingsWindow: SettingsWindow(settings: settings))
         self.menu = menu
-        let media = NowPlayingStore(adapter: MediaRemoteAdapter(), settings: settings)
+        // En los tests la app hace de host y xcodebuild la cierra sin avisar (sin SIGTERM): el adaptador de música
+        // quedaría huérfano en cada pasada, así que ahí no se arranca
+        let isTestHost = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        let media = NowPlayingStore(adapter: isTestHost ? nil : MediaRemoteAdapter(), settings: settings)
         self.media = media
         let island = IslandController(
             store: store, icons: AppIcons(), menu: menu, focuser: ShortcutFocuser(), settings: settings, media: media,
@@ -81,6 +85,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         store.requestRefresh()
+        handleTerminationSignal()
+    }
+
+    // `kill`, `pkill` y yb.sh mandan SIGTERM, que por defecto cierra la app sin pasar por applicationWillTerminate
+    // y deja vivo el adaptador de música. La señal se convierte en un cierre normal, como "Salir"
+    private func handleTerminationSignal() {
+        signal(SIGTERM, SIG_IGN)
+        let source = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        source.setEventHandler {
+            MainActor.assumeIsolated {
+                Logger.app.info("SIGTERM: cerrando como con Salir")
+                NSApp.terminate(nil)
+            }
+        }
+        source.resume()
+        terminationSignal = source
     }
 
     func applicationWillTerminate(_ notification: Notification) {
