@@ -49,3 +49,32 @@ struct IslandLayout: Equatable {
         return outerPadding + numberWidth + icons + overflow + innerPadding
     }
 }
+
+// Geometría pura de la isla abierta: debajo de la franja del notch, una tarjeta por espacio en una fila.
+// Nunca es más estrecha que la isla cerrada y, si hay muchos espacios, las tarjetas se estrechan.
+struct IslandExpandedLayout: Equatable {
+    static let cardWidth: CGFloat = 132
+    static let cardHeight: CGFloat = 70
+    static let cardSpacing: CGFloat = 8
+    static let padding: CGFloat = 14
+    /// Separación entre la franja del notch y las tarjetas
+    static let gapBelowNotch: CGFloat = 8
+    static let maxIcons = 4
+    static let iconSize: CGFloat = 22
+
+    let spaces: [SpaceSummary]
+    /// Ancho del cuerpo, sin las esquinas superiores cóncavas
+    let bodyWidth: CGFloat
+    let height: CGFloat
+    let cardWidth: CGFloat
+
+    init(spaces: [SpaceSummary], minBodyWidth: CGFloat, maxBodyWidth: CGFloat, topHeight: CGFloat) {
+        self.spaces = spaces
+        let count = CGFloat(spaces.count)
+        let gaps = max(0, count - 1) * Self.cardSpacing
+        let natural = 2 * Self.padding + count * Self.cardWidth + gaps
+        bodyWidth = min(max(minBodyWidth, natural), max(minBodyWidth, maxBodyWidth))
+        cardWidth = count > 0 ? min(Self.cardWidth, (bodyWidth - 2 * Self.padding - gaps) / count) : 0
+        height = topHeight + Self.gapBelowNotch + Self.cardHeight + Self.padding
+    }
+}

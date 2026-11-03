@@ -32,8 +32,11 @@ struct NotchGeometry: Equatable {
     /// Marco de la ventana, centrado en el notch y pegado al borde superior. Las esquinas superiores
     /// cóncavas de la isla ocupan `topRadius` por cada lado además de las alas.
     func windowFrame(wingWidth: CGFloat, topRadius: CGFloat, height: CGFloat? = nil) -> CGRect {
-        let width = centerWidth + 2 * wingWidth + 2 * topRadius
-        let height = height ?? notch.height
-        return CGRect(x: notch.midX - width / 2, y: notch.maxY - height, width: width, height: height)
+        windowFrame(width: centerWidth + 2 * wingWidth + 2 * topRadius, height: height ?? notch.height)
+    }
+
+    /// Marco de una ventana de ese tamaño, centrado en el notch y pegado al borde superior
+    func windowFrame(width: CGFloat, height: CGFloat) -> CGRect {
+        CGRect(x: notch.midX - width / 2, y: notch.maxY - height, width: width, height: height)
     }
 }

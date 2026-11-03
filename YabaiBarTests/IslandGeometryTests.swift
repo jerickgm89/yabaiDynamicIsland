@@ -32,6 +32,13 @@ struct NotchGeometryTests {
         #expect(frame.minY == screen.maxY - 150)
     }
 
+    @Test func anyWindowSizeStaysCenteredOnTheNotchAndFlushWithTheTop() {
+        let frame = notched.windowFrame(width: 650, height: 146)
+        #expect(frame.midX == notched.notch.midX)
+        #expect(frame.maxY == screen.maxY)
+        #expect(frame.size == CGSize(width: 650, height: 146))
+    }
+
     @Test func screenWithoutNotchGetsACenteredFallback() {
         let plain = NotchGeometry(screenFrame: screen, topLeftArea: nil, topRightArea: nil, topInset: 0)
         #expect(!plain.hasNotch)

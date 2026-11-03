@@ -48,6 +48,30 @@ struct IslandLayoutTests {
     }
 }
 
+struct IslandExpandedLayoutTests {
+    // 2 × 14 de margen + 4 tarjetas de 132 + 3 huecos de 8 = 580; alto 38 + 8 + 70 + 14 = 130
+    @Test func fourSpacesGetFullSizeCards() {
+        let spaces = (1...4).map { summary($0, apps: 1, focused: $0 == 2) }
+        let layout = IslandExpandedLayout(spaces: spaces, minBodyWidth: 396, maxBodyWidth: 1958, topHeight: 38)
+        #expect(layout.bodyWidth == 580)
+        #expect(layout.cardWidth == IslandExpandedLayout.cardWidth)
+        #expect(layout.height == 130)
+    }
+
+    @Test func neverNarrowerThanTheClosedIsland() {
+        let layout = IslandExpandedLayout(spaces: [summary(1, apps: 1, focused: true)], minBodyWidth: 396, maxBodyWidth: 1958, topHeight: 38)
+        #expect(layout.bodyWidth == 396)
+        #expect(layout.cardWidth == IslandExpandedLayout.cardWidth)
+    }
+
+    @Test func manySpacesShrinkTheirCardsToFitTheScreen() {
+        let spaces = (1...10).map { summary($0, apps: 1, focused: $0 == 1) }
+        let layout = IslandExpandedLayout(spaces: spaces, minBodyWidth: 396, maxBodyWidth: 1000, topHeight: 38)
+        #expect(layout.bodyWidth == 1000)
+        #expect(layout.cardWidth == 90)
+    }
+}
+
 @MainActor
 struct IslandModelTests {
     // 224 de cuerpo + 2 alas de 90 + 2 × 6 de esquinas cóncavas; el pulso suma 8
@@ -58,6 +82,21 @@ struct IslandModelTests {
         #expect(model.islandWidth == 416)
         model.pulsing = true
         #expect(model.islandWidth == 416 + IslandView.pulseGrowth)
+    }
+
+    // Abierta manda el layout de las tarjetas, más las esquinas superiores cóncavas de 19
+    @Test func expandedIslandUsesTheCardsLayout() {
+        let model = IslandModel()
+        model.centerWidth = 224
+        model.height = 38
+        let spaces = (1...4).map { summary($0, apps: 1, focused: $0 == 2) }
+        model.layout = IslandLayout(spaces: spaces)
+        model.expanded = IslandExpandedLayout(spaces: spaces, minBodyWidth: 396, maxBodyWidth: 1958, topHeight: 38)
+        model.hovering = true
+        #expect(model.islandHeight == 38 + IslandView.hoverGrowth)
+        model.isExpanded = true
+        #expect(model.islandWidth == 580 + 2 * IslandView.openTopRadius)
+        #expect(model.islandHeight == 130)
     }
 }
 

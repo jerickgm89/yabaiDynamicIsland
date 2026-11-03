@@ -67,7 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 store?.requestRefresh()
             #if DEBUG
             case "snapshot":
-                island?.saveSnapshot()
+                island?.saveSnapshot(expanded: url.query() == "abierta")
             case "stress":
                 island?.stressTest()
             #endif

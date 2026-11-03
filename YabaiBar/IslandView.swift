@@ -6,27 +6,44 @@ import SwiftUI
 @Observable
 final class IslandModel {
     var layout = IslandLayout(spaces: [])
+    var expanded = IslandExpandedLayout(spaces: [], minBodyWidth: 0, maxBodyWidth: 0, topHeight: 0)
     var centerWidth: CGFloat = 0
     var height: CGFloat = 0
     var icons: [Int32: NSImage] = [:]
     /// "YB" o "YB ⚠︎" cuando no hay espacios que mostrar
     var fallbackText: String? = "YB"
     var pulsing = false
+    /// El puntero está encima: la isla crece un poco antes de abrirse
+    var hovering = false
+    /// Cada vez que cambia, el trackpad vibra (sensoryFeedback)
+    var hoverCount = 0
+    var isExpanded = false
     var reduceMotion = false
 
     var islandWidth: CGFloat {
-        centerWidth + 2 * layout.wingWidth + 2 * IslandView.closedTopRadius + (pulsing ? IslandView.pulseGrowth : 0)
+        if isExpanded { return expanded.bodyWidth + 2 * IslandView.openTopRadius }
+        return centerWidth + 2 * layout.wingWidth + 2 * IslandView.closedTopRadius
+            + (pulsing ? IslandView.pulseGrowth : 0) + (hovering ? IslandView.hoverGrowth : 0)
+    }
+
+    var islandHeight: CGFloat {
+        if isExpanded { return expanded.height }
+        return height + (hovering ? IslandView.hoverGrowth : 0)
     }
 }
 
 // La isla cerrada: ala izquierda con el espacio activo, hueco del notch y ala derecha con los inactivos.
 // Como en la Dynamic Island, el contenido de cada ala se pega a su borde exterior.
 struct IslandView: View {
-    // Radios de la isla cerrada, los mismos que usa Atoll
+    // Radios cerrada y abierta, los mismos que usa Atoll
     static let closedTopRadius: CGFloat = 6
     static let closedBottomRadius: CGFloat = 14
+    static let openTopRadius: CGFloat = 19
+    static let openBottomRadius: CGFloat = 24
     /// Lo que crece la isla durante el pulso al cambiar de espacio
     static let pulseGrowth: CGFloat = 8
+    /// Lo que crece la isla al pasar el puntero, antes de abrirse
+    static let hoverGrowth: CGFloat = 8
     /// Los números se dibujan todos a 12 pt y el activo se escala: el tamaño de letra no se anima, la escala sí
     static let activeNumberScale: CGFloat = 17.0 / 12.0
 
@@ -35,17 +52,87 @@ struct IslandView: View {
 
     var body: some View {
         let wing = model.layout.wingWidth + (model.pulsing ? Self.pulseGrowth / 2 : 0)
-        HStack(spacing: 0) {
-            leftWing.frame(width: wing)
-            Color.clear.frame(width: model.centerWidth)
-            rightWing.frame(width: wing)
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                leftWing.frame(width: wing)
+                Color.clear.frame(width: model.centerWidth)
+                rightWing.frame(width: wing)
+            }
+            .frame(height: model.height)
+            if model.isExpanded {
+                cards.padding(.top, IslandExpandedLayout.gapBelowNotch)
+            }
         }
-        .padding(.horizontal, Self.closedTopRadius)
-        .frame(width: model.islandWidth, height: model.height)
-        .background(IslandShape(topRadius: Self.closedTopRadius, bottomRadius: Self.closedBottomRadius).fill(.black))
-        // La ventana puede ser más ancha mientras dura una animación: la isla va centrada y pegada arriba.
-        // Mínimo 0 para no imponer ningún tamaño a la ventana
+        .frame(width: model.islandWidth, height: model.islandHeight, alignment: .top)
+        .background(
+            IslandShape(
+                topRadius: model.isExpanded ? Self.openTopRadius : Self.closedTopRadius,
+                bottomRadius: model.isExpanded ? Self.openBottomRadius : Self.closedBottomRadius
+            )
+            .fill(.black)
+        )
+        .compositingGroup()
+        .shadow(color: .black.opacity(model.isExpanded || model.hovering ? 0.6 : 0), radius: model.isExpanded ? 10 : 5)
+        .sensoryFeedback(.alignment, trigger: model.hoverCount)
+        // La ventana puede ser más grande que la isla (animaciones, sombra): la isla va centrada y pegada
+        // arriba. Mínimo 0 para no imponer ningún tamaño a la ventana
         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .top)
+    }
+
+    // Isla abierta: una tarjeta por espacio, que entran escalonadas
+    private var cards: some View {
+        HStack(spacing: IslandExpandedLayout.cardSpacing) {
+            ForEach(model.expanded.spaces) { space in
+                let position = model.expanded.spaces.firstIndex(of: space) ?? 0
+                card(for: space)
+                    .transition(
+                        model.reduceMotion
+                            ? .opacity
+                            : .scale(scale: 0.98, anchor: .top).combined(with: .opacity)
+                                .animation(.smooth(duration: 0.25).delay(Double(position) * 0.03))
+                    )
+            }
+        }
+    }
+
+    private func card(for space: SpaceSummary) -> some View {
+        let accent = SpaceAccent.color(for: space.index)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("\(space.index)")
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(accent)
+                Spacer(minLength: 0)
+                if (1...9).contains(space.index) {
+                    Text("⌥\(space.index)")
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.45))
+                }
+            }
+            HStack(spacing: 4) {
+                if space.apps.isEmpty {
+                    Text("Vacío")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.35))
+                } else {
+                    ForEach(space.apps.prefix(IslandExpandedLayout.maxIcons), id: \.pid) { app in
+                        Image(nsImage: model.icons[app.pid] ?? NSImage())
+                            .resizable()
+                            .frame(width: IslandExpandedLayout.iconSize, height: IslandExpandedLayout.iconSize)
+                    }
+                    if space.apps.count > IslandExpandedLayout.maxIcons {
+                        Text("+\(space.apps.count - IslandExpandedLayout.maxIcons)")
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
+                }
+            }
+            .frame(height: IslandExpandedLayout.iconSize)
+        }
+        .padding(10)
+        .frame(width: model.expanded.cardWidth, height: IslandExpandedLayout.cardHeight, alignment: .topLeading)
+        .background(RoundedRectangle(cornerRadius: 12).fill(.white.opacity(0.06)))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(space.isFocused ? accent : .clear, lineWidth: 1.5))
     }
 
     private var leftWing: some View {
