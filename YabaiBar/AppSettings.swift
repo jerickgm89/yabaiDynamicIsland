@@ -47,6 +47,16 @@ final class AppSettings {
         didSet { defaults.set(nowPlayingSource.rawValue, forKey: Key.nowPlayingSource) }
     }
 
+    /// Las barras al final del ala derecha de la isla cerrada mientras hay música
+    var showMusicBars: Bool {
+        didSet { defaults.set(showMusicBars, forKey: Key.showMusicBars) }
+    }
+
+    /// Al cambiar de canción, la isla cerrada enseña unos segundos la carátula y el título
+    var announceTracks: Bool {
+        didSet { defaults.set(announceTracks, forKey: Key.announceTracks) }
+    }
+
     /// Mientras se graba un atajo nuevo no se escucha el actual: Carbon se lo quedaría antes que la ventana
     var isRecordingShortcut = false
     /// Por qué no se pudo registrar el atajo, para mostrarlo en los ajustes
@@ -62,6 +72,8 @@ final class AppSettings {
         static let openOnHover = "openOnHover"
         static let showNowPlaying = "showNowPlaying"
         static let nowPlayingSource = "nowPlayingSource"
+        static let showMusicBars = "showMusicBars"
+        static let announceTracks = "announceTracks"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -82,6 +94,8 @@ final class AppSettings {
         openOnHover = defaults.object(forKey: Key.openOnHover) as? Bool ?? true
         showNowPlaying = defaults.object(forKey: Key.showNowPlaying) as? Bool ?? true
         nowPlayingSource = defaults.string(forKey: Key.nowPlayingSource).flatMap(NowPlayingSource.init(rawValue:)) ?? .any
+        showMusicBars = defaults.object(forKey: Key.showMusicBars) as? Bool ?? true
+        announceTracks = defaults.object(forKey: Key.announceTracks) as? Bool ?? true
     }
 }
 

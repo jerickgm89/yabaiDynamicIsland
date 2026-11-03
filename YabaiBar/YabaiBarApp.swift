@@ -117,7 +117,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 store?.requestRefresh()
             #if DEBUG
             case "snapshot":
-                island?.saveSnapshot(expanded: url.query() == "abierta", hoveringCard: url.query() == "hover")
+                island?.saveSnapshot(
+                    expanded: url.query() == "abierta", hoveringCard: url.query() == "hover", trackPeek: url.query() == "aviso"
+                )
             case "stress":
                 island?.stressTest()
             #endif

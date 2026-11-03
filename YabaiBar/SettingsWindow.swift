@@ -70,14 +70,18 @@ struct SettingsView: View {
 
             Section {
                 Toggle("Mostrar lo que suena", isOn: $settings.showNowPlaying)
-                Picker("De", selection: $settings.nowPlayingSource) {
-                    ForEach(NowPlayingSource.allCases) { Text($0.title).tag($0) }
+                Group {
+                    Picker("De", selection: $settings.nowPlayingSource) {
+                        ForEach(NowPlayingSource.allCases) { Text($0.title).tag($0) }
+                    }
+                    Toggle("Barras en la isla cerrada", isOn: $settings.showMusicBars)
+                    Toggle("Avisar al cambiar de canción", isOn: $settings.announceTracks)
                 }
                 .disabled(!settings.showNowPlaying)
             } header: {
                 Text("Música")
             } footer: {
-                Text("Con la isla abierta, la canción, la carátula y los botones. Lo lee del «Ahora suena» de macOS: no se envía nada a internet.")
+                Text("Con la isla abierta, la canción, la carátula y los botones; dos dedos de lado sobre ella cambian de canción. Lo lee del «Ahora suena» de macOS: no se envía nada a internet.")
                     .foregroundStyle(.secondary)
             }
         }

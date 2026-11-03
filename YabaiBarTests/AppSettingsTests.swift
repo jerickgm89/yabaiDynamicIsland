@@ -23,6 +23,8 @@ struct AppSettingsTests {
             #expect(settings.openOnHover)
             #expect(settings.showNowPlaying)
             #expect(settings.nowPlayingSource == .any)
+            #expect(settings.showMusicBars)
+            #expect(settings.announceTracks)
         }
     }
 
@@ -37,6 +39,8 @@ struct AppSettingsTests {
             settings.openOnHover = false
             settings.showNowPlaying = false
             settings.nowPlayingSource = .tidal
+            settings.showMusicBars = false
+            settings.announceTracks = false
 
             let reloaded = AppSettings(defaults: defaults)
             #expect(reloaded.switchSpeed == .fast)
@@ -46,6 +50,8 @@ struct AppSettingsTests {
             #expect(!reloaded.openOnHover)
             #expect(!reloaded.showNowPlaying)
             #expect(reloaded.nowPlayingSource == .tidal)
+            #expect(!reloaded.showMusicBars)
+            #expect(!reloaded.announceTracks)
         }
     }
 

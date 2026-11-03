@@ -1,7 +1,8 @@
 import Foundation
 
-// Geometría pura de las alas: el espacio activo va a la izquierda del notch y los inactivos a la derecha.
-// Las dos alas miden lo mismo (lo que necesite la más ancha), dentro de un mínimo y un máximo.
+// Geometría pura de las alas: el espacio activo va a la izquierda del notch y los inactivos a la derecha, con las
+// barras de la música al final si suena algo. Las dos alas miden lo mismo (lo que necesite la más ancha), dentro
+// de un mínimo y un máximo.
 struct IslandLayout: Equatable {
     static let minWingWidth: CGFloat = 70
     static let maxWingWidth: CGFloat = 150
@@ -17,6 +18,11 @@ struct IslandLayout: Equatable {
     static let overflowWidth: CGFloat = 22
     static let tokenWidth: CGFloat = 22
     static let minTokenWidth: CGFloat = 14
+    static let musicIndicatorWidth: CGFloat = 14
+    static let musicIndicatorGap: CGFloat = 6
+    /// Durante el aviso de canción nueva las alas se abren al máximo, para que quepan la carátula y el título
+    static let trackPeekWingWidth: CGFloat = maxWingWidth
+    static let trackPeekArtworkSize: CGFloat = 24
 
     let active: SpaceSummary?
     let inactive: [SpaceSummary]
@@ -25,20 +31,24 @@ struct IslandLayout: Equatable {
     let tokenWidth: CGFloat
     /// El espacio activo es una app a pantalla completa: la isla se recoge al tamaño del notch para no estorbar
     let isCollapsed: Bool
+    /// Las barras de la música al final del ala derecha. Recogida a pantalla completa, nunca
+    let showsMusicIndicator: Bool
 
     var shownApps: ArraySlice<SpaceApp> { active?.apps.prefix(Self.maxIcons) ?? [] }
     var overflow: Int { max(0, (active?.apps.count ?? 0) - Self.maxIcons) }
 
-    init(spaces: [SpaceSummary]) {
+    init(spaces: [SpaceSummary], musicIndicator: Bool = false) {
         active = spaces.first(where: \.isFocused)
         inactive = spaces.filter { !$0.isFocused }
         isCollapsed = active?.isFullscreen ?? false
+        showsMusicIndicator = musicIndicator && !isCollapsed
 
+        let indicator = showsMusicIndicator ? Self.musicIndicatorGap + Self.musicIndicatorWidth : 0
         let left = Self.leftWidth(appCount: active?.apps.count ?? 0)
-        let right = Self.innerPadding + CGFloat(inactive.count) * Self.tokenWidth + Self.outerPadding
+        let right = Self.innerPadding + CGFloat(inactive.count) * Self.tokenWidth + indicator + Self.outerPadding
         wingWidth = isCollapsed ? 0 : min(max(left, right, Self.minWingWidth), Self.maxWingWidth)
 
-        let available = wingWidth - Self.innerPadding - Self.outerPadding
+        let available = wingWidth - Self.innerPadding - Self.outerPadding - indicator
         tokenWidth = inactive.isEmpty
             ? Self.tokenWidth
             : max(Self.minTokenWidth, min(Self.tokenWidth, available / CGFloat(inactive.count)))
@@ -102,19 +112,29 @@ struct IslandExpandedLayout: Equatable {
             + Self.padding
     }
 
-    /// El control de la franja "Ahora suena" bajo un punto de la isla (origen arriba a la izquierda). Cuenta toda
-    /// la altura de la franja, para que los botones sean fáciles de acertar
+    /// Si un punto de la isla (origen arriba a la izquierda) cae en la franja "Ahora suena"
+    func mediaStripContains(_ point: CGPoint, islandWidth: CGFloat, topHeight: CGFloat) -> Bool {
+        stripX(of: point, islandWidth: islandWidth, topHeight: topHeight) != nil
+    }
+
+    /// El control de la franja "Ahora suena" bajo un punto de la isla. Cuenta toda la altura de la franja, para
+    /// que los botones sean fáciles de acertar
     func mediaControl(at point: CGPoint, islandWidth: CGFloat, topHeight: CGFloat) -> MediaControl? {
-        let top = topHeight + Self.gapBelowNotch + Self.cardHeight + Self.mediaGap
-        guard hasMedia, point.y >= top, point.y < top + Self.mediaHeight else { return nil }
-        let x = point.x - (islandWidth - mediaWidth) / 2
-        guard x >= 0, x < mediaWidth else { return nil }
+        guard let x = stripX(of: point, islandWidth: islandWidth, topHeight: topHeight) else { return nil }
         if x < Self.artworkSize { return .artwork }
         let controlsX = x - (mediaWidth - Self.controlsWidth)
         guard controlsX >= 0 else { return nil }
         let index = Int(controlsX / (Self.controlSize + Self.controlSpacing))
         let offset = controlsX - CGFloat(index) * (Self.controlSize + Self.controlSpacing)
         return index < Self.controls.count && offset < Self.controlSize ? Self.controls[index] : nil
+    }
+
+    // La x del punto dentro de la franja, o nil si cae fuera
+    private func stripX(of point: CGPoint, islandWidth: CGFloat, topHeight: CGFloat) -> CGFloat? {
+        let top = topHeight + Self.gapBelowNotch + Self.cardHeight + Self.mediaGap
+        guard hasMedia, point.y >= top, point.y < top + Self.mediaHeight else { return nil }
+        let x = point.x - (islandWidth - mediaWidth) / 2
+        return x >= 0 && x < mediaWidth ? x : nil
     }
 
     /// La tarjeta bajo un punto de la isla (origen arriba a la izquierda), o `nil` en los huecos y fuera de

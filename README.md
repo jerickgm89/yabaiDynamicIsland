@@ -22,6 +22,8 @@ Su diseño se inspira en [Atoll](https://github.com/Ebullioscopic/Atoll) (ver [A
 - A la derecha, los espacios inactivos. Los que tienen ventanas llevan un punto de su color; los vacíos se ven apagados.
 - Las dos alas miden lo mismo, para que la isla quede centrada en el notch.
 - Cada espacio tiene su color, de una paleta inspirada en el tema liquid-glass.
+- Si hay música, unas barras al final del ala derecha se mueven mientras suena y se quedan quietas en pausa.
+- Al cambiar de canción, durante 3 s la isla enseña la carátula a la izquierda y el título y el artista a la derecha.
 
 **Al cambiar de escritorio**
 
@@ -41,6 +43,7 @@ Su diseño se inspira en [Atoll](https://github.com/Ebullioscopic/Atoll) (ver [A
 
 - Debajo de las tarjetas, lo que suena: la carátula, el título, el artista con el ícono de la app y el progreso.
 - Los botones anterior, reproducir o pausar y siguiente controlan la app que suena. Un clic en la carátula abre esa app.
+- Con el puntero sobre la franja, desliza dos dedos hacia la izquierda para pasar a la siguiente canción, o hacia la derecha para volver a la anterior.
 - Funciona con TIDAL y con cualquier app que publique en el "Ahora suena" de macOS (Música, Spotify, el navegador…). En Ajustes puedes limitarlo a TIDAL.
 - Lo lee [mediaremote-adapter](https://github.com/ungive/mediaremote-adapter), que va dentro de la app. Desde macOS 15.4 es la única forma de leer "Ahora suena" desde fuera de Apple, así que una actualización de macOS podría romperlo.
 
@@ -158,6 +161,8 @@ Haz clic en la isla y elige "Ajustes…". Los cambios se aplican al momento y se
 | Al cabo de | Los segundos que espera antes de ocultarse, de 1 a 10 | 3 s |
 | Mostrar lo que suena | La franja de música de la isla abierta. Apagada, el adaptador de música no se ejecuta | Activado |
 | De | Cualquier app o solo TIDAL | Cualquier app |
+| Barras en la isla cerrada | Las barras al final del ala derecha mientras hay música | Activado |
+| Avisar al cambiar de canción | La carátula y el título durante 3 s en la isla cerrada | Activado |
 
 ## Desarrollo
 
@@ -174,7 +179,7 @@ xcodebuild -project YabaiBar.xcodeproj -scheme YabaiBar -destination 'platform=m
 notifyutil -p com.jerickdev.yabaibar.refresh
 ```
 
-En la build Debug, la URL `yabaibar://snapshot` (o `yabaibar://snapshot?abierta`) guarda una imagen de la isla en `~/Library/Caches/com.jerickdev.yabaibar/bar.png`.
+En la build Debug, la URL `yabaibar://snapshot` (o `yabaibar://snapshot?abierta`, o `?aviso` para el aviso de canción nueva) guarda una imagen de la isla en `~/Library/Caches/com.jerickdev.yabaibar/bar.png`.
 
 **Estructura**
 

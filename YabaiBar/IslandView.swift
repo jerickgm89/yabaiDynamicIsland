@@ -41,8 +41,12 @@ final class IslandModel {
 
     /// Ancho de cada ala tal como se ve ahora; con "Reducir movimiento" las alas no se recogen, solo se funden
     var visibleWingWidth: CGFloat {
-        wingsTucked && !reduceMotion ? 0 : layout.wingWidth
+        if wingsTucked && !reduceMotion { return 0 }
+        return showsTrackPeek ? IslandLayout.trackPeekWingWidth : layout.wingWidth
     }
+
+    /// Aviso de canción nueva: unos segundos, las alas enseñan la carátula y el título en vez de los espacios
+    var showsTrackPeek = false
 
     var islandWidth: CGFloat {
         if isExpanded { return expanded.bodyWidth + 2 * IslandView.openTopRadius }
@@ -281,7 +285,13 @@ struct IslandView: View {
 
     private var leftWing: some View {
         HStack(spacing: 0) {
-            if let fallbackText = model.fallbackText {
+            if model.showsTrackPeek {
+                // Aviso de canción nueva: la carátula y las barras
+                artwork
+                    .frame(width: IslandLayout.trackPeekArtworkSize, height: IslandLayout.trackPeekArtworkSize)
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                musicBars.padding(.leading, IslandLayout.musicIndicatorGap)
+            } else if let fallbackText = model.fallbackText {
                 Text(fallbackText)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
@@ -313,19 +323,48 @@ struct IslandView: View {
 
     private var rightWing: some View {
         HStack(spacing: 0) {
-            ForEach(model.layout.inactive) { space in
-                VStack(spacing: 2) {
-                    number(for: space, isActive: false)
-                    Circle()
-                        .fill(SpaceAccent.color(for: space.index))
-                        .frame(width: 4, height: 4)
-                        .opacity(space.apps.isEmpty ? 0 : 1)
+            if model.showsTrackPeek, let nowPlaying = model.nowPlaying {
+                // Aviso de canción nueva: el título y el artista, recortados al ala
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text(nowPlaying.title)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                    Text(nowPlaying.artist)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.6))
                 }
-                .frame(width: model.layout.tokenWidth)
+                .lineLimit(1)
+                .frame(
+                    maxWidth: IslandLayout.trackPeekWingWidth - IslandLayout.innerPadding - IslandLayout.outerPadding,
+                    alignment: .trailing
+                )
+            } else {
+                ForEach(model.layout.inactive) { space in
+                    VStack(spacing: 2) {
+                        number(for: space, isActive: false)
+                        Circle()
+                            .fill(SpaceAccent.color(for: space.index))
+                            .frame(width: 4, height: 4)
+                            .opacity(space.apps.isEmpty ? 0 : 1)
+                    }
+                    .frame(width: model.layout.tokenWidth)
+                }
+                if model.layout.showsMusicIndicator {
+                    musicBars
+                        .frame(width: IslandLayout.musicIndicatorWidth)
+                        .padding(.leading, IslandLayout.musicIndicatorGap)
+                        .transition(.opacity)
+                }
             }
         }
         .padding(.trailing, IslandLayout.outerPadding)
         .frame(maxWidth: .infinity, alignment: .trailing)
+    }
+
+    // Animadas mientras suena; fijas en pausa o con "Reducir movimiento" (ver MusicBars)
+    private var musicBars: some View {
+        MusicBars(isPlaying: model.nowPlaying?.isPlaying ?? false, animated: !model.reduceMotion)
+            .frame(width: IslandLayout.musicIndicatorWidth, height: 12)
     }
 
     private func number(for space: SpaceSummary, isActive: Bool) -> some View {

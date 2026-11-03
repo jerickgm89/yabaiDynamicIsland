@@ -33,6 +33,19 @@ struct NowPlaying: Equatable, Sendable {
     }
 }
 
+// Lógica pura del aviso de la isla cerrada: decide cuándo empieza a sonar una canción distinta de la anterior.
+// Lo primero que llega al arrancar no avisa, ni volver a reproducir la misma canción tras una pausa o un silencio.
+struct TrackChangeDetector {
+    private var last: NowPlaying?
+
+    mutating func update(_ nowPlaying: NowPlaying?) -> Bool {
+        guard let nowPlaying else { return false }
+        defer { last = nowPlaying }
+        guard let last else { return false }
+        return nowPlaying.isPlaying && !nowPlaying.isSameTrack(as: last)
+    }
+}
+
 // De la salida de mediaremote-adapter (con --micros) a NowPlaying. `stream` manda el estado completo al cambiar
 // de canción (diff: false) y luego solo lo que cambia (diff: true), donde un null borra el campo.
 struct NowPlayingParser {
