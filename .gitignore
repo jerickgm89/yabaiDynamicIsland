@@ -10,5 +10,7 @@ xcuserdata/
 *.xcuserstate
 .DS_Store
 
-# Permisos locales de Claude Code
-.claude/settings.local.json
+# Solo en local: planes, instrucciones y configuración de Claude Code
+docs/
+CLAUDE.md
+.claude/

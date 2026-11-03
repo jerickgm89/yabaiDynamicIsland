@@ -5,11 +5,11 @@ Una isla alrededor del notch del Mac que muestra los espacios de [yabai](https:/
 La isla vive por encima de la barra de menús, nace del notch como la Dynamic Island y está en todos los escritorios. Su diseño se inspira en [Atoll](https://github.com/Ebullioscopic/Atoll) (ver [Agradecimientos](#agradecimientos)).
 
 <p align="center">
-  <img src="docs/images/isla-cerrada.png" width="640" alt="La isla cerrada: el espacio 3 activo con su app a la izquierda del notch y los espacios 1, 2 y 4 a la derecha">
+  <img src="assets/isla-cerrada.png" width="640" alt="La isla cerrada: el espacio 3 activo con su app a la izquierda del notch y los espacios 1, 2 y 4 a la derecha">
 </p>
 
 <p align="center">
-  <img src="docs/images/isla-abierta.png" width="820" alt="La isla abierta: una tarjeta por espacio con su número, sus apps y su atajo, con el puntero sobre la tarjeta 1">
+  <img src="assets/isla-abierta.png" width="820" alt="La isla abierta: una tarjeta por espacio con su número, sus apps y su atajo, con el puntero sobre la tarjeta 1">
 </p>
 
 ## Qué hace
@@ -48,17 +48,20 @@ La isla vive por encima de la barra de menús, nace del notch como la Dynamic Is
 
 ## Instalación
 
-El proyecto se genera con XcodeGen a partir de `project.yml`; el `.xcodeproj` no se versiona. El script `yb.sh` lo regenera, compila y ejecuta:
+El proyecto se genera con XcodeGen a partir de `project.yml`; el `.xcodeproj` no se versiona. Para compilar la versión Release, instalarla en `/Applications` y abrirla:
 
 ```bash
-git clone git@github.com:jerickgm89/yabaiDynamicIsland.git
+git clone https://github.com/jerickgm89/yabaiDynamicIsland.git
 cd yabaiDynamicIsland
-.claude/skills/build-run/scripts/yb.sh install
+xcodegen generate
+xcodebuild -project YabaiBar.xcodeproj -scheme YabaiBar -configuration Release -derivedDataPath build build
+ditto build/Build/Products/Release/YabaiBar.app /Applications/YabaiBar.app
+open /Applications/YabaiBar.app
 ```
 
-`install` compila la versión Release, la copia en `/Applications/YabaiBar.app` y la abre. La opción "Iniciar al arrancar" del menú solo está disponible desde `/Applications`.
+La opción "Iniciar al arrancar" del menú solo está disponible desde `/Applications`.
 
-Si prefieres Xcode, ejecuta `xcodegen generate` y abre `YabaiBar.xcodeproj`.
+Si `xcodebuild` dice que necesita Xcode y no las Command Line Tools, apunta `xcode-select` a Xcode con `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`. Si prefieres trabajar en Xcode, abre `YabaiBar.xcodeproj` después de `xcodegen generate`.
 
 ### Firma (opcional, recomendada)
 
@@ -68,7 +71,7 @@ El permiso de Accesibilidad (ver abajo) queda ligado a la firma de la app. Con l
 2. Llámalo **YabaiBar Dev**, con tipo de identidad "Raíz autofirmada" y tipo de certificado "Firma de código".
 3. Ábrelo y, en Confiar, marca "Firma de código" como "Confiar siempre".
 
-Si el certificado existe, `yb.sh` firma con él; si no, firma ad-hoc y avisa.
+Después añade `CODE_SIGN_IDENTITY="YabaiBar Dev"` al final del comando `xcodebuild`. Sin esa opción, la app se firma ad-hoc.
 
 ## Configuración
 
@@ -108,19 +111,20 @@ Si el permiso está marcado pero el clic no cambia de escritorio, la firma de la
 
 ## Desarrollo
 
-`yb.sh` agrupa las tareas habituales:
+Después de cambiar `project.yml` o de añadir archivos, vuelve a ejecutar `xcodegen generate`.
 
-| Comando | Qué hace |
-| --- | --- |
-| `yb.sh build [Debug\|Release]` | Regenera el proyecto y compila |
-| `yb.sh test` | Ejecuta los tests |
-| `yb.sh run` | Compila en Debug y relanza la app |
-| `yb.sh stop` | Cierra la app |
-| `yb.sh logs [2m]` | Muestra los logs recientes de la app |
-| `yb.sh snapshot [abierta\|hover]` | Guarda una imagen de la isla (solo Debug) |
-| `yb.sh refresh` | Envía el aviso de refresco |
-| `yb.sh install` | Compila en Release e instala en `/Applications` |
-| `yb.sh clean` | Borra `build/` |
+```bash
+# Tests
+xcodebuild -project YabaiBar.xcodeproj -scheme YabaiBar -destination 'platform=macOS' -derivedDataPath build test
+
+# Logs de los últimos 2 minutos
+/usr/bin/log show --last 2m --predicate 'subsystem == "com.jerickdev.yabaibar"' --info
+
+# Forzar un refresco
+notifyutil -p com.jerickdev.yabaibar.refresh
+```
+
+En la build Debug, la URL `yabaibar://snapshot` (o `yabaibar://snapshot?abierta`) guarda una imagen de la isla en `~/Library/Caches/com.jerickdev.yabaibar/bar.png`.
 
 **Estructura**
 
@@ -131,8 +135,7 @@ Si el permiso está marcado pero el clic no cambia de escritorio, la firma de la
   - `NotchGeometry` e `IslandLayout` calculan la geometría.
   - `IslandView` dibuja la isla e `IslandController` la coloca y la anima.
 - `YabaiBarTests/`: tests con Swift Testing y fixtures JSON reales de yabai. Se ejecutan dentro de la app, que también consulta el yabai real.
-- `docs/`: el plan de la versión 1 (barra de menús, [PLAN.md](docs/PLAN.md)) y el de la versión 2 (la isla, [PLAN-ISLA.md](docs/PLAN-ISLA.md)), con las medidas y las decisiones de diseño.
-- `.claude/`: los agentes y skills de [Claude Code](https://claude.com/claude-code) con los que se desarrolló el proyecto.
+- `assets/`: las capturas de este README.
 
 ## Agradecimientos
 
