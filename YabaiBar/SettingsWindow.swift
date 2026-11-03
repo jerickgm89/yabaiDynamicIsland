@@ -54,6 +54,7 @@ struct SettingsView: View {
             }
 
             Section {
+                Toggle("Al pasar el puntero", isOn: $settings.openOnHover)
                 LabeledContent("Atajo") { ShortcutRecorder(settings: settings) }
                 Toggle("Ocultar sola", isOn: $settings.autoHide)
                 Stepper(value: $settings.autoHideDelay, in: AppSettings.autoHideDelays) {
@@ -61,9 +62,22 @@ struct SettingsView: View {
                 }
                 .disabled(!settings.autoHide)
             } header: {
-                Text("Abrir desde cualquier app")
+                Text("Abrir la isla")
             } footer: {
-                Text("3 o 4 dedos hacia abajo en el trackpad, o el atajo, abren y cierran la isla. Si llevas el puntero a la isla, ya no se oculta sola: se cierra al sacarlo.")
+                Text("3 o 4 dedos hacia abajo en el trackpad, o el atajo, abren y cierran la isla desde cualquier app. Abierta así, si llevas el puntero a la isla ya no se oculta sola: se cierra al sacarlo.")
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                Toggle("Mostrar lo que suena", isOn: $settings.showNowPlaying)
+                Picker("De", selection: $settings.nowPlayingSource) {
+                    ForEach(NowPlayingSource.allCases) { Text($0.title).tag($0) }
+                }
+                .disabled(!settings.showNowPlaying)
+            } header: {
+                Text("Música")
+            } footer: {
+                Text("Con la isla abierta, la canción, la carátula y los botones. Lo lee del «Ahora suena» de macOS: no se envía nada a internet.")
                     .foregroundStyle(.secondary)
             }
         }

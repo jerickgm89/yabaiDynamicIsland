@@ -2,8 +2,8 @@ import Foundation
 import Observation
 import SwiftUI
 
-// Ajustes del usuario, guardados en UserDefaults: la velocidad de las alas al cambiar de escritorio, el atajo que
-// abre la isla desde cualquier app y si la isla abierta así se oculta sola.
+// Ajustes del usuario, guardados en UserDefaults: la velocidad de las alas al cambiar de escritorio, cómo se abre
+// la isla (con el puntero, con el atajo, si se oculta sola) y qué música muestra.
 @MainActor
 @Observable
 final class AppSettings {
@@ -33,6 +33,20 @@ final class AppSettings {
         didSet { defaults.set(autoHideDelay, forKey: Key.autoHideDelay) }
     }
 
+    /// Si no, la isla solo se abre con el atajo o el gesto
+    var openOnHover: Bool {
+        didSet { defaults.set(openOnHover, forKey: Key.openOnHover) }
+    }
+
+    /// La franja "Ahora suena" de la isla abierta. Apagada, el adaptador no corre
+    var showNowPlaying: Bool {
+        didSet { defaults.set(showNowPlaying, forKey: Key.showNowPlaying) }
+    }
+
+    var nowPlayingSource: NowPlayingSource {
+        didSet { defaults.set(nowPlayingSource.rawValue, forKey: Key.nowPlayingSource) }
+    }
+
     /// Mientras se graba un atajo nuevo no se escucha el actual: Carbon se lo quedaría antes que la ventana
     var isRecordingShortcut = false
     /// Por qué no se pudo registrar el atajo, para mostrarlo en los ajustes
@@ -45,6 +59,9 @@ final class AppSettings {
         static let toggleShortcut = "toggleShortcut"
         static let autoHide = "autoHide"
         static let autoHideDelay = "autoHideDelay"
+        static let openOnHover = "openOnHover"
+        static let showNowPlaying = "showNowPlaying"
+        static let nowPlayingSource = "nowPlayingSource"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -62,6 +79,28 @@ final class AppSettings {
         autoHide = defaults.object(forKey: Key.autoHide) as? Bool ?? true
         let delay = defaults.object(forKey: Key.autoHideDelay) as? Int ?? Self.defaultAutoHideDelay
         autoHideDelay = Self.autoHideDelays.contains(delay) ? delay : Self.defaultAutoHideDelay
+        openOnHover = defaults.object(forKey: Key.openOnHover) as? Bool ?? true
+        showNowPlaying = defaults.object(forKey: Key.showNowPlaying) as? Bool ?? true
+        nowPlayingSource = defaults.string(forKey: Key.nowPlayingSource).flatMap(NowPlayingSource.init(rawValue:)) ?? .any
+    }
+}
+
+/// De qué apps se muestra lo que suena. El "Ahora suena" de macOS es de una sola app a la vez: con "Solo TIDAL",
+/// si un vídeo del navegador se lo quita, la franja desaparece hasta que TIDAL lo recupere
+enum NowPlayingSource: String, CaseIterable, Identifiable {
+    case any, tidal
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .any: "Cualquier app"
+        case .tidal: "Solo TIDAL"
+        }
+    }
+
+    func accepts(_ bundleIdentifier: String) -> Bool {
+        self == .any || bundleIdentifier == NowPlaying.tidalBundleID
     }
 }
 

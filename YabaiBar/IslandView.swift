@@ -26,6 +26,13 @@ final class IslandModel {
     var pressedSpace: Int?
     /// Atajo de Mission Control de cada escritorio ("⌥1"); los que no tienen no aparecen
     var shortcutLabels: [Int: String] = [:]
+    /// Lo que suena. La franja solo se ve con la isla abierta y `expanded.hasMedia`
+    var nowPlaying: NowPlaying?
+    var artwork: NSImage?
+    /// El ícono de la app que suena, junto al título
+    var sourceIcon: NSImage?
+    var hoveredControl: IslandExpandedLayout.MediaControl?
+    var pressedControl: IslandExpandedLayout.MediaControl?
 
     /// Se va a un escritorio desde su tarjeta con su atajo; la del activo solo cierra la isla
     func canSwitch(to space: SpaceSummary) -> Bool {
@@ -83,6 +90,11 @@ struct IslandView: View {
             .scaleEffect(model.wingsTucked && !model.reduceMotion ? 0.85 : 1)
             if model.isExpanded {
                 cards.padding(.top, IslandExpandedLayout.gapBelowNotch)
+                if model.expanded.hasMedia, let nowPlaying = model.nowPlaying {
+                    mediaStrip(nowPlaying)
+                        .padding(.top, IslandExpandedLayout.mediaGap)
+                        .transition(.opacity)
+                }
             }
         }
         .frame(width: model.islandWidth, height: model.islandHeight, alignment: .top)
@@ -166,6 +178,98 @@ struct IslandView: View {
         .background(shape.fill(.white.opacity(hovered ? 0.12 : 0.06)))
         .overlay(shape.strokeBorder(border, lineWidth: 1.5))
         .scaleEffect(cardScale(for: space))
+    }
+
+    // MARK: - Ahora suena
+
+    // Carátula, título, artista y progreso, y los botones a la derecha. Los clics los resuelve IslandController
+    // con IslandExpandedLayout.mediaControl, igual que los de las tarjetas
+    private func mediaStrip(_ nowPlaying: NowPlaying) -> some View {
+        HStack(spacing: 10) {
+            artwork
+                .frame(width: IslandExpandedLayout.artworkSize, height: IslandExpandedLayout.artworkSize)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .scaleEffect(controlScale(.artwork))
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 5) {
+                    if let icon = model.sourceIcon {
+                        Image(nsImage: icon).resizable().frame(width: 12, height: 12)
+                    }
+                    Text(nowPlaying.title)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+                Text(nowPlaying.artist)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.55))
+                progress(nowPlaying)
+            }
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: IslandExpandedLayout.controlSpacing) {
+                control(.previous, symbol: "backward.fill")
+                control(.playPause, symbol: nowPlaying.isPlaying ? "pause.fill" : "play.fill")
+                control(.next, symbol: "forward.fill")
+            }
+        }
+        .frame(width: model.expanded.mediaWidth, height: IslandExpandedLayout.mediaHeight)
+    }
+
+    @ViewBuilder private var artwork: some View {
+        if let image = model.artwork {
+            Image(nsImage: image).resizable().aspectRatio(contentMode: .fill)
+        } else {
+            ZStack {
+                Color.white.opacity(0.08)
+                Image(systemName: "music.note").foregroundStyle(.white.opacity(0.5))
+            }
+        }
+    }
+
+    // Se redibuja cada segundo solo mientras suena; el tiempo se calcula, no se pregunta a la app
+    private func progress(_ nowPlaying: NowPlaying) -> some View {
+        TimelineView(.animation(minimumInterval: 1, paused: !nowPlaying.isPlaying)) { context in
+            let elapsed = nowPlaying.elapsed(at: context.date)
+            HStack(spacing: 6) {
+                if let duration = nowPlaying.duration, duration > 0 {
+                    GeometryReader { proxy in
+                        Capsule()
+                            .fill(.white.opacity(0.15))
+                            .overlay(alignment: .leading) {
+                                Capsule().fill(.white.opacity(0.8)).frame(width: proxy.size.width * elapsed / duration)
+                            }
+                    }
+                    .frame(height: 3)
+                    Text("\(Self.time(elapsed)) / \(Self.time(duration))")
+                        .font(.system(size: 9, weight: .medium))
+                        .monospacedDigit()
+                        .foregroundStyle(.white.opacity(0.5))
+                        .fixedSize()
+                }
+            }
+            .frame(height: 12)
+        }
+    }
+
+    private func control(_ control: IslandExpandedLayout.MediaControl, symbol: String) -> some View {
+        let hovered = model.hoveredControl == control
+        return Image(systemName: symbol)
+            .font(.system(size: control == .playPause ? 16 : 12, weight: .semibold))
+            .foregroundStyle(.white.opacity(hovered ? 1 : 0.8))
+            .contentTransition(.symbolEffect(.replace))
+            .frame(width: IslandExpandedLayout.controlSize, height: IslandExpandedLayout.controlSize)
+            .background(Circle().fill(.white.opacity(hovered ? 0.14 : 0)))
+            .scaleEffect(controlScale(control))
+    }
+
+    private func controlScale(_ control: IslandExpandedLayout.MediaControl) -> CGFloat {
+        !model.reduceMotion && model.pressedControl == control ? 0.88 : 1
+    }
+
+    // "3:07"
+    private static func time(_ seconds: TimeInterval) -> String {
+        let total = Int(seconds)
+        return "\(total / 60):" + String(format: "%02d", total % 60)
     }
 
     // Con "Reducir movimiento" la tarjeta no cambia de tamaño: solo de luz y de borde

@@ -50,12 +50,15 @@ final class IslandController {
     private let icons: AppIcons
     private let focuser: ShortcutFocuser
     private let settings: AppSettings
+    private let media: NowPlayingStore
     private var geometry: NotchGeometry?
     private var screenWidth: CGFloat = 0
     // Copias de lo dibujado. No se leen del modelo dentro de render(): withObservationTracking
     // registraría el modelo y cada cambio volvería a llamar a render() sin fin
     private var currentLayout = IslandLayout(spaces: [])
     private var currentSpaces: [SpaceSummary] = []
+    /// Hay franja "Ahora suena": la isla abierta es más alta
+    private var currentHasMedia = false
     private var expansion = Expansion.closed
     private var settleTask: Task<Void, Never>?
     private var tuckedAt: ContinuousClock.Instant?
@@ -71,11 +74,15 @@ final class IslandController {
     private var screenObserver: NSObjectProtocol?
     private var occlusionObserver: NSObjectProtocol?
 
-    init(store: SpacesStore, icons: AppIcons, menu: AppMenu, focuser: ShortcutFocuser, settings: AppSettings) {
+    init(
+        store: SpacesStore, icons: AppIcons, menu: AppMenu, focuser: ShortcutFocuser, settings: AppSettings,
+        media: NowPlayingStore
+    ) {
         self.store = store
         self.icons = icons
         self.focuser = focuser
         self.settings = settings
+        self.media = media
         hosting = IslandHostingView(rootView: IslandView(model: model))
         // Que la vista no cambie el tamaño de la ventana: el marco lo decide NotchGeometry
         hosting.sizingOptions = []
@@ -92,6 +99,7 @@ final class IslandController {
 
         updateGeometry()
         observeStore()
+        observeMedia()
         panel.orderFrontRegardless()
 
         screenObserver = NotificationCenter.default.addObserver(
@@ -235,16 +243,48 @@ final class IslandController {
             minBodyWidth: geometry.centerWidth + 2 * currentLayout.wingWidth,
             // Como en Atoll, la isla abierta deja al menos 30 pt libres a cada lado de la pantalla
             maxBodyWidth: screenWidth - 60 - 2 * IslandView.openTopRadius,
-            topHeight: geometry.notch.height
+            topHeight: geometry.notch.height,
+            hasMedia: currentHasMedia
         )
+    }
+
+    // MARK: - Ahora suena
+
+    // Aparte de render(): lo que suena cambia a menudo y no tiene que volver a calcular las alas
+    private func observeMedia() {
+        withObservationTracking {
+            updateMedia()
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.observeMedia() }
+        }
+    }
+
+    private func updateMedia() {
+        let nowPlaying = media.nowPlaying
+        let artwork = media.artwork
+        let sourceIcon = media.sourceIcon
+        let appeared = (nowPlaying != nil) != currentHasMedia
+        currentHasMedia = nowPlaying != nil
+        // Si la franja aparece o desaparece, la isla abierta cambia de alto: la ventana crece antes de animar
+        if appeared { growWindow() }
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        withAnimation(reduceMotion ? Self.reducedAnimation : Self.changeAnimation) {
+            model.nowPlaying = nowPlaying
+            model.artwork = artwork
+            model.sourceIcon = sourceIcon
+            if appeared, let geometry { model.expanded = expandedLayout(for: currentSpaces, geometry: geometry) }
+        }
+        if appeared { settleWindow() }
     }
 
     // MARK: - Hover
 
     private func pointerEntered() {
         // La ventana puede medir más que la isla durante una animación: solo cuenta entrar en la isla.
-        // Mientras cambia el escritorio (alas recogidas) no se abre
-        guard expansion == .closed, tuckedAt == nil, !currentSpaces.isEmpty, pointerIsOverIsland() else { return }
+        // Mientras cambia el escritorio (alas recogidas) no se abre. Con "Abrir al pasar el puntero" apagado, solo
+        // se abre con el atajo o el gesto
+        guard settings.openOnHover, expansion == .closed, tuckedAt == nil, !currentSpaces.isEmpty, pointerIsOverIsland()
+        else { return }
         expansion = .peek
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         growWindow()
@@ -285,6 +325,8 @@ final class IslandController {
             model.hovering = false
             model.hoveredSpace = nil
             model.pressedSpace = nil
+            model.hoveredControl = nil
+            model.pressedControl = nil
         }
         settleWindow()
         if wasOpen { Logger.app.info("Isla cerrada") }
@@ -362,34 +404,53 @@ final class IslandController {
 
     // MARK: - Tarjetas
 
-    // La tarjeta bajo el puntero con la isla abierta. Sale de la geometría de la isla en pantalla y no de onHover
-    // de SwiftUI, que no es fiable en un panel que nunca se activa.
-    private func spaceUnderPointer() -> SpaceSummary? {
+    // El puntero en coordenadas de la isla abierta, con el origen arriba a la izquierda, como las dibuja SwiftUI.
+    // Sale de la geometría de la isla en pantalla y no de onHover, que no es fiable en un panel que nunca se activa.
+    private func pointerInOpenIsland() -> (point: CGPoint, islandWidth: CGFloat, topHeight: CGFloat)? {
         guard expansion == .open, let geometry else { return nil }
         let island = geometry.windowFrame(width: model.islandWidth, height: model.islandHeight)
         let pointer = NSEvent.mouseLocation
-        // Coordenadas de la isla con el origen arriba a la izquierda, como las dibuja SwiftUI
-        let point = CGPoint(x: pointer.x - island.minX, y: island.maxY - pointer.y)
-        let expanded = model.expanded
-        guard let index = expanded.cardIndex(at: point, islandWidth: island.width, topHeight: geometry.notch.height) else {
+        return (CGPoint(x: pointer.x - island.minX, y: island.maxY - pointer.y), island.width, geometry.notch.height)
+    }
+
+    private func spaceUnderPointer() -> SpaceSummary? {
+        guard let (point, islandWidth, topHeight) = pointerInOpenIsland(),
+              let index = model.expanded.cardIndex(at: point, islandWidth: islandWidth, topHeight: topHeight) else {
             return nil
         }
-        return expanded.spaces[index]
+        return model.expanded.spaces[index]
     }
 
-    // Solo se iluminan las tarjetas a las que se puede ir
+    private func mediaControlUnderPointer() -> IslandExpandedLayout.MediaControl? {
+        guard let (point, islandWidth, topHeight) = pointerInOpenIsland() else { return nil }
+        return model.expanded.mediaControl(at: point, islandWidth: islandWidth, topHeight: topHeight)
+    }
+
+    // Solo se iluminan las tarjetas a las que se puede ir, y los botones de la música
     private func updateHoveredCard() {
         let hovered = spaceUnderPointer().flatMap { model.canSwitch(to: $0) ? $0.index : nil }
-        guard hovered != model.hoveredSpace else { return }
+        let control = mediaControlUnderPointer()
+        guard hovered != model.hoveredSpace || control != model.hoveredControl else { return }
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        withAnimation(reduceMotion ? Self.reducedAnimation : Self.cardAnimation) { model.hoveredSpace = hovered }
+        withAnimation(reduceMotion ? Self.reducedAnimation : Self.cardAnimation) {
+            model.hoveredSpace = hovered
+            model.hoveredControl = control
+        }
     }
 
-    /// Pulsar una tarjeta la hunde. Devuelve false si el clic no cae en ninguna, y entonces se abre el menú
+    /// Pulsar una tarjeta o un botón de la música lo hunde. Devuelve false si el clic no cae en ninguno, y entonces
+    /// se abre el menú
     private func pressCard() -> Bool {
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        if let control = mediaControlUnderPointer() {
+            withAnimation(reduceMotion ? Self.reducedAnimation : Self.cardAnimation) {
+                model.hoveredControl = control
+                model.pressedControl = control
+            }
+            return true
+        }
         guard let space = spaceUnderPointer() else { return false }
         guard model.canSwitch(to: space) else { return true }
-        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         withAnimation(reduceMotion ? Self.reducedAnimation : Self.cardAnimation) {
             model.hoveredSpace = space.index
             model.pressedSpace = space.index
@@ -397,14 +458,32 @@ final class IslandController {
         return true
     }
 
-    // Como un botón: el cambio llega al soltar, y solo si el puntero sigue en la misma tarjeta
+    // Como un botón: la acción llega al soltar, y solo si el puntero sigue en la misma tarjeta o el mismo botón
     private func releaseCard() {
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        if let pressed = model.pressedControl {
+            let control = mediaControlUnderPointer()
+            withAnimation(reduceMotion ? Self.reducedAnimation : Self.cardAnimation) { model.pressedControl = nil }
+            if control == pressed { perform(pressed) }
+            return
+        }
         guard let pressed = model.pressedSpace else { return }
         let space = spaceUnderPointer()
-        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         withAnimation(reduceMotion ? Self.reducedAnimation : Self.cardAnimation) { model.pressedSpace = nil }
         guard let space, space.index == pressed else { return }
         switchTo(space)
+    }
+
+    private func perform(_ control: IslandExpandedLayout.MediaControl) {
+        Logger.app.info("Clic: \(String(describing: control), privacy: .public) en la música")
+        switch control {
+        case .playPause: media.togglePlayPause()
+        case .next: media.nextTrack()
+        case .previous: media.previousTrack()
+        case .artwork:
+            close()
+            media.openSource()
+        }
     }
 
     private func switchTo(_ space: SpaceSummary) {
@@ -445,6 +524,7 @@ final class IslandController {
             model.isExpanded = false
             model.hovering = false
             model.hoveredSpace = nil
+            model.hoveredControl = nil
             model.wingsTucked = true
         }
         settleWindow()

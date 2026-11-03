@@ -2,7 +2,7 @@
 
 Una isla alrededor del notch del Mac que muestra los espacios de [yabai](https://github.com/asmvik/yabai), con los íconos de sus apps, y resalta el activo. Es una app nativa de macOS escrita en Swift 6 con SwiftUI y AppKit.
 
-La isla vive por encima de la barra de menús, nace del notch como la Dynamic Island y está en todos los escritorios. Para ver qué apps tienes en cada escritorio, ábrela de tres formas: pasa el puntero por encima, desliza 3 o 4 dedos hacia abajo en el trackpad o pulsa un atajo de teclado (⌥I), desde cualquier app. Desde sus tarjetas saltas a cualquier escritorio, y una ventana de ajustes te deja cambiar la velocidad de la animación, el atajo y cuándo se oculta sola.
+La isla vive por encima de la barra de menús, nace del notch como la Dynamic Island y está en todos los escritorios. Para ver qué apps tienes en cada escritorio, ábrela de tres formas: pasa el puntero por encima, desliza 3 o 4 dedos hacia abajo en el trackpad o pulsa un atajo de teclado (⌥I), desde cualquier app. Desde sus tarjetas saltas a cualquier escritorio y, debajo, ves y controlas la música que suena (TIDAL o cualquier app del "Ahora suena" de macOS). Una ventana de ajustes te deja cambiar la velocidad de la animación, el atajo, cuándo se abre y se oculta, y qué música muestra.
 
 Su diseño se inspira en [Atoll](https://github.com/Ebullioscopic/Atoll) (ver [Agradecimientos](#agradecimientos)).
 
@@ -37,6 +37,13 @@ Su diseño se inspira en [Atoll](https://github.com/Ebullioscopic/Atoll) (ver [A
 - Al pasar sobre una tarjeta, esta se ilumina; al hacer clic, macOS cambia a ese escritorio con su animación nativa.
 - El clic derecho, o cualquier clic fuera de las tarjetas, abre el menú: el error de yabai si lo hay, Refrescar, Iniciar al arrancar, Ajustes… y Salir.
 
+**Música (con la isla abierta)**
+
+- Debajo de las tarjetas, lo que suena: la carátula, el título, el artista con el ícono de la app y el progreso.
+- Los botones anterior, reproducir o pausar y siguiente controlan la app que suena. Un clic en la carátula abre esa app.
+- Funciona con TIDAL y con cualquier app que publique en el "Ahora suena" de macOS (Música, Spotify, el navegador…). En Ajustes puedes limitarlo a TIDAL.
+- Lo lee [mediaremote-adapter](https://github.com/ungive/mediaremote-adapter), que va dentro de la app. Desde macOS 15.4 es la única forma de leer "Ahora suena" desde fuera de Apple, así que una actualización de macOS podría romperlo.
+
 **Abierta desde cualquier app**
 
 - Desliza 3 o 4 dedos hacia abajo en el trackpad, o pulsa el atajo (⌥I por defecto), y la isla se abre al momento, aunque el puntero esté lejos. El mismo gesto, o el atajo, la cierra.
@@ -47,7 +54,7 @@ Su diseño se inspira en [Atoll](https://github.com/Ebullioscopic/Atoll) (ver [A
 
 **Ajustes**
 
-- "Ajustes…", en el menú de la isla, abre una ventana para cambiar la velocidad de las alas, el atajo y si la isla se oculta sola (ver [Ajustes](#ajustes)).
+- "Ajustes…", en el menú de la isla, abre una ventana para cambiar la velocidad de las alas, cómo se abre la isla, si se oculta sola y qué música muestra (ver [Ajustes](#ajustes)).
 
 **Casos especiales**
 
@@ -145,9 +152,12 @@ Haz clic en la isla y elige "Ajustes…". Los cambios se aplican al momento y se
 | Ajuste | Qué hace | Por defecto |
 | --- | --- | --- |
 | Velocidad de las alas | Lo que tardan las alas en recogerse y volver a salir al cambiar de escritorio: Lenta, Normal, Rápida o Sin animación | Normal |
+| Al pasar el puntero | Si está apagado, la isla solo se abre con el atajo o el gesto | Activado |
 | Atajo | La combinación que abre y cierra la isla desde cualquier app. Pulsa el botón y luego la combinación nueva; Esc cancela y ⌫ lo quita | ⌥I |
 | Ocultar sola | Abierta con el atajo o el gesto, la isla se cierra sola si no llevas el puntero hasta ella | Activado |
 | Al cabo de | Los segundos que espera antes de ocultarse, de 1 a 10 | 3 s |
+| Mostrar lo que suena | La franja de música de la isla abierta. Apagada, el adaptador de música no se ejecuta | Activado |
+| De | Cualquier app o solo TIDAL | Cualquier app |
 
 ## Desarrollo
 
@@ -176,6 +186,8 @@ En la build Debug, la URL `yabaibar://snapshot` (o `yabaibar://snapshot?abierta`
   - `IslandView` dibuja la isla e `IslandController` la coloca y la anima.
   - `TrackpadMonitor` (con `FingerSwipeDetector`) y `GlobalHotKey` la abren desde cualquier app.
   - `AppSettings` guarda los ajustes y `SettingsWindow` los muestra.
+  - `MediaRemoteAdapter` ejecuta el adaptador de música, `NowPlayingParser` entiende lo que manda y `NowPlayingStore` lo publica para la isla.
+- `Vendor/mediaremote-adapter/`: el código de mediaremote-adapter, sin cambios y con su licencia. Lo compila el target `MediaRemoteAdapter` de `project.yml`.
 - `YabaiBarTests/`: tests con Swift Testing y fixtures JSON reales de yabai. Se ejecutan dentro de la app, que también consulta el yabai real.
 - `assets/`: las capturas de este README.
 
@@ -185,8 +197,10 @@ En la build Debug, la URL `yabaibar://snapshot` (o `yabaibar://snapshot?abierta`
 
 Atoll se publica con licencia GPL-3.0 y deriva de [boring.notch](https://github.com/TheBoredTeam/boring.notch), así que también va nuestro agradecimiento a TheBoredTeam. YabaiBar toma de ellos ideas, medidas y curvas de animación, pero no copia su código: toda la implementación está escrita desde cero.
 
+**[mediaremote-adapter](https://github.com/ungive/mediaremote-adapter)**, de Jonas van den Berg y sus colaboradores, que permite leer y controlar "Ahora suena" desde macOS 15.4. Va incluido en `Vendor/` con su licencia BSD-3-Clause.
+
 **[yabai](https://github.com/asmvik/yabai)**, que hace posible todo lo demás.
 
 ## Licencia
 
-YabaiBar se publica con licencia [MIT](LICENSE): puedes usarla, modificarla y redistribuirla, siempre que conserves el aviso de copyright.
+YabaiBar se publica con licencia [MIT](LICENSE): puedes usarla, modificarla y redistribuirla, siempre que conserves el aviso de copyright. El código de `Vendor/mediaremote-adapter/` conserva su propia licencia, [BSD-3-Clause](Vendor/mediaremote-adapter/LICENSE).

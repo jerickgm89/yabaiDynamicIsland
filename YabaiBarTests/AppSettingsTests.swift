@@ -20,6 +20,9 @@ struct AppSettingsTests {
             #expect(settings.toggleShortcut == .defaultToggle)
             #expect(settings.autoHide)
             #expect(settings.autoHideDelay == 3)
+            #expect(settings.openOnHover)
+            #expect(settings.showNowPlaying)
+            #expect(settings.nowPlayingSource == .any)
         }
     }
 
@@ -31,12 +34,18 @@ struct AppSettingsTests {
             settings.toggleShortcut = shortcut
             settings.autoHide = false
             settings.autoHideDelay = 7
+            settings.openOnHover = false
+            settings.showNowPlaying = false
+            settings.nowPlayingSource = .tidal
 
             let reloaded = AppSettings(defaults: defaults)
             #expect(reloaded.switchSpeed == .fast)
             #expect(reloaded.toggleShortcut?.label == "⇧⌘Y")
             #expect(!reloaded.autoHide)
             #expect(reloaded.autoHideDelay == 7)
+            #expect(!reloaded.openOnHover)
+            #expect(!reloaded.showNowPlaying)
+            #expect(reloaded.nowPlayingSource == .tidal)
         }
     }
 
@@ -58,6 +67,14 @@ struct AppSettingsTests {
             #expect(settings.autoHideDelay == 3)
             #expect(settings.toggleShortcut == .defaultToggle)
         }
+    }
+}
+
+struct NowPlayingSourceTests {
+    @Test func onlyTidalFiltersOtherApps() {
+        #expect(NowPlayingSource.any.accepts("com.google.Chrome"))
+        #expect(NowPlayingSource.tidal.accepts(NowPlaying.tidalBundleID))
+        #expect(!NowPlayingSource.tidal.accepts("com.google.Chrome"))
     }
 }
 

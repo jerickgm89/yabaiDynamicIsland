@@ -1,0 +1,4 @@
+mediaremote-adapter v0.7.7 (commit e3ff502), de https://github.com/ungive/mediaremote-adapter
+Copiado sin cambios: src/adapter, src/private, src/utility, include, bin/mediaremote-adapter.pl y LICENSE.
+Del cliente de prueba solo está src/test/NowPlayingTest.h, porque lo incluye src/adapter/test.m.
+No están los archivos de CMake: el framework lo compila el target MediaRemoteAdapter de project.yml.

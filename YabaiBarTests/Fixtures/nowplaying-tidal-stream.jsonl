@@ -1,0 +1,15 @@
+{"type":"data","diff":false,"payload":{}}
+{"type":"data","diff":false,"payload":{"durationMicros":377399000,"timestampEpochMicros":1793733818448989,"album":"XX Aniversario En Vivo - Magos, Espadas Y Rosas","elapsedTimeMicros":29187000,"playbackRate":1,"bundleIdentifier":"com.tidal.desktop","processIdentifier":19182,"title":"Mujer Amante (Vivo)","artworkMimeType":"image/jpeg","artist":"Rata Blanca","contentItemIdentifier":"59CF4B70-ED9C-489F-9785-BD93B65DBD93","playing":true}}
+{"type":"data","diff":true,"payload":{"artworkData":"/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q=="}}
+{"type":"data","diff":true,"payload":{"playing":false}}
+{"type":"data","diff":true,"payload":{"elapsedTimeMicros":76184000,"playbackRate":0,"timestampEpochMicros":1793733865443757,"durationMicros":294000000,"contentItemIdentifier":"217DB2C8-79D7-48E1-A3E5-A28D65099AD6"}}
+{"type":"data","diff":true,"payload":{"playing":true}}
+{"type":"data","diff":false,"payload":{"playing":true,"timestampEpochMicros":1793733866166212,"album":"Audioslave","elapsedTimeMicros":0,"playbackRate":1,"bundleIdentifier":"com.tidal.desktop","processIdentifier":19182,"title":"Like a Stone","artworkMimeType":"image/jpeg","durationMicros":293960000,"artist":"Audioslave","contentItemIdentifier":"289C909A-9D74-4A60-A406-80AA343FB540"}}
+{"type":"data","diff":true,"payload":{"artworkData":"/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q=="}}
+{"type":"data","diff":true,"payload":{"playing":false}}
+{"type":"data","diff":true,"payload":{"elapsedTimeMicros":3123000,"playbackRate":0,"timestampEpochMicros":1793733869500808,"durationMicros":377000000,"contentItemIdentifier":"A4670815-7708-4DE8-9161-EA34FEE0F107"}}
+{"type":"data","diff":true,"payload":{"playing":true}}
+{"type":"data","diff":false,"payload":{"playing":true,"timestampEpochMicros":1793733870186943,"album":"XX Aniversario En Vivo - Magos, Espadas Y Rosas","elapsedTimeMicros":0,"playbackRate":1,"bundleIdentifier":"com.tidal.desktop","processIdentifier":19182,"title":"Mujer Amante (Vivo)","artworkMimeType":"image/jpeg","durationMicros":377399000,"artist":"Rata Blanca","contentItemIdentifier":"FDA03544-E29E-4468-893D-83A24D132210"}}
+{"type":"data","diff":true,"payload":{"artworkData":"/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q=="}}
+{"type":"data","diff":true,"payload":{"playing":false}}
+{"type":"data","diff":true,"payload":{"elapsedTimeMicros":3111000,"playbackRate":0,"timestampEpochMicros":1793733873557553,"contentItemIdentifier":"5C3F1373-B449-480B-8337-AFC09384F7E4"}}

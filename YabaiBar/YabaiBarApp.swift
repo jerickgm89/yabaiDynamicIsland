@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menu: AppMenu?
     private var island: IslandController?
     private var settings: AppSettings?
+    private var media: NowPlayingStore?
     private var toggleKey: GlobalHotKey?
     private var trackpad: TrackpadMonitor?
     private var workspaceObservers: [NSObjectProtocol] = []
@@ -43,8 +44,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.settings = settings
         let menu = AppMenu(store: store, launchAtLogin: LaunchAtLogin(), settingsWindow: SettingsWindow(settings: settings))
         self.menu = menu
+        let media = NowPlayingStore(adapter: MediaRemoteAdapter(), settings: settings)
+        self.media = media
         let island = IslandController(
-            store: store, icons: AppIcons(), menu: menu, focuser: ShortcutFocuser(), settings: settings
+            store: store, icons: AppIcons(), menu: menu, focuser: ShortcutFocuser(), settings: settings, media: media
         )
         self.island = island
 
@@ -75,6 +78,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         store.requestRefresh()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        media?.shutDown()
     }
 
     // Registra el atajo de los ajustes y lo vuelve a registrar cada vez que cambia. Mientras se graba uno nuevo,

@@ -9,7 +9,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "6.0"
-    MARKETING_VERSION: "2.4.0"
+    MARKETING_VERSION: "2.5.0"
     CURRENT_PROJECT_VERSION: "1"
     CODE_SIGN_IDENTITY: "-"
     CODE_SIGN_STYLE: Manual
@@ -21,6 +21,14 @@ targets:
     platform: macOS
     sources:
       - path: YabaiBar
+      # Lo ejecuta /usr/bin/perl con el framework del target MediaRemoteAdapter (ver MediaRemoteAdapter.swift)
+      - path: Vendor/mediaremote-adapter/bin/mediaremote-adapter.pl
+        buildPhase: resources
+    dependencies:
+      # Se copia a Contents/Frameworks pero no se enlaza: lo carga el script de Perl, no la app
+      - target: MediaRemoteAdapter
+        link: false
+        embed: true
     info:
       path: YabaiBar/Info.plist
       properties:
@@ -42,6 +50,38 @@ targets:
     scheme:
       testTargets:
         - YabaiBarTests
+
+  # mediaremote-adapter (BSD-3-Clause), sin cambios: lee y controla el "Ahora suena" de macOS desde /usr/bin/perl.
+  # Mismas opciones que su CMakeLists.txt: ARC y símbolos visibles, para que el script de Perl encuentre las funciones
+  MediaRemoteAdapter:
+    type: framework
+    platform: macOS
+    sources:
+      - path: Vendor/mediaremote-adapter/src/adapter
+      - path: Vendor/mediaremote-adapter/src/private
+      - path: Vendor/mediaremote-adapter/src/utility
+      - path: Vendor/mediaremote-adapter/include
+      # La licencia viaja con el binario, como pide la BSD-3-Clause
+      - path: Vendor/mediaremote-adapter/LICENSE
+        buildPhase: resources
+    dependencies:
+      - sdk: Foundation.framework
+      - sdk: AppKit.framework
+      - sdk: UniformTypeIdentifiers.framework
+    settings:
+      base:
+        PRODUCT_NAME: MediaRemoteAdapter
+        PRODUCT_BUNDLE_IDENTIFIER: com.jerickdev.yabaibar.MediaRemoteAdapter
+        GENERATE_INFOPLIST_FILE: YES
+        CLANG_ENABLE_OBJC_ARC: YES
+        GCC_SYMBOLS_PRIVATE_EXTERN: NO
+        HEADER_SEARCH_PATHS:
+          - $(SRCROOT)/Vendor/mediaremote-adapter/include
+          - $(SRCROOT)/Vendor/mediaremote-adapter/src
+        DEFINES_MODULE: NO
+        SKIP_INSTALL: YES
+        # Código de terceros que no tocamos
+        GCC_WARN_INHIBIT_ALL_WARNINGS: YES
 
   YabaiBarTests:
     type: bundle.unit-test
