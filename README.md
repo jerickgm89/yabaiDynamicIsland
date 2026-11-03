@@ -2,7 +2,9 @@
 
 Una isla alrededor del notch del Mac que muestra los espacios de [yabai](https://github.com/asmvik/yabai), con los íconos de sus apps, y resalta el activo. Es una app nativa de macOS escrita en Swift 6 con SwiftUI y AppKit.
 
-La isla vive por encima de la barra de menús, nace del notch como la Dynamic Island y está en todos los escritorios. Su diseño se inspira en [Atoll](https://github.com/Ebullioscopic/Atoll) (ver [Agradecimientos](#agradecimientos)).
+La isla vive por encima de la barra de menús, nace del notch como la Dynamic Island y está en todos los escritorios. Para ver qué apps tienes en cada escritorio, ábrela de tres formas: pasa el puntero por encima, desliza 3 o 4 dedos hacia abajo en el trackpad o pulsa un atajo de teclado (⌥I), desde cualquier app. Desde sus tarjetas saltas a cualquier escritorio, y una ventana de ajustes te deja cambiar la velocidad de la animación, el atajo y cuándo se oculta sola.
+
+Su diseño se inspira en [Atoll](https://github.com/Ebullioscopic/Atoll) (ver [Agradecimientos](#agradecimientos)).
 
 <p align="center">
   <img src="assets/isla-cerrada.png" width="640" alt="La isla cerrada: el espacio 3 activo con su app a la izquierda del notch y los espacios 1, 2 y 4 a la derecha">
@@ -25,6 +27,7 @@ La isla vive por encima de la barra de menús, nace del notch como la Dynamic Is
 
 - En cuanto empieza el cambio (con ⌥N o al iniciar el gesto del trackpad), las alas se recogen hacia el notch y la isla se desvanece.
 - Al llegar al escritorio nuevo, las alas vuelven a salir con el contenido actualizado.
+- La velocidad de las alas se cambia en los ajustes.
 - Con "Reducir movimiento" activado, el contenido solo se funde.
 
 **Abierta (al pasar el puntero)**
@@ -38,15 +41,13 @@ La isla vive por encima de la barra de menús, nace del notch como la Dynamic Is
 
 - Desliza 3 o 4 dedos hacia abajo en el trackpad, o pulsa el atajo (⌥I por defecto), y la isla se abre al momento, aunque el puntero esté lejos. El mismo gesto, o el atajo, la cierra.
 - Abierta así, se oculta sola a los 3 s si no llevas el puntero hasta ella, y también se cierra con Esc o con un clic en otra app. Si llevas el puntero a la isla, desde ahí se comporta como con el hover.
-- Hacia arriba y a los lados no se usan, porque son de Mission Control y del cambio de escritorio. Si activas App Exposé o "Arrastrar con tres dedos", chocarán con el gesto.
+- Hacia arriba y a los lados no se usan, porque son de Mission Control y del cambio de escritorio (ver [Abrir la isla desde cualquier app](#abrir-la-isla-desde-cualquier-app)).
 - El gesto se lee con MultitouchSupport, un framework privado de Apple, porque macOS no ofrece una API pública para gestos de 3 o 4 dedos. Una actualización de macOS podría romperlo; el atajo seguiría funcionando.
 - Mientras YabaiBar está abierta, la combinación del atajo ya no llega a las demás apps. Con ⌥I, por ejemplo, ya no se escribe el circunflejo (ˆ).
 
-**Ajustes (en el menú, ⌘,)**
+**Ajustes**
 
-- **Velocidad de las alas** al cambiar de escritorio: Lenta, Normal, Rápida o Sin animación. El deslizamiento del escritorio es el de macOS y no cambia.
-- **Atajo** para abrir la isla: pulsa el botón y luego la combinación nueva. Esc cancela, ⌫ lo quita y "Restablecer" vuelve a ⌥I. Una letra necesita ⌘, ⌥ o ⌃.
-- **Ocultar sola** cuando se abre con el atajo o el gesto, y al cabo de cuántos segundos (de 1 a 10).
+- "Ajustes…", en el menú de la isla, abre una ventana para cambiar la velocidad de las alas, el atajo y si la isla se oculta sola (ver [Ajustes](#ajustes)).
 
 **Casos especiales**
 
@@ -58,6 +59,7 @@ La isla vive por encima de la barra de menús, nace del notch como la Dynamic Is
 
 - macOS 14 o posterior. La isla está pensada para Macs con notch. En pantallas sin notch usa un notch imaginario de 180 × 32 pt centrado arriba, que todavía no se ha probado a fondo.
 - [yabai](https://github.com/asmvik/yabai) v7 instalado en `/opt/homebrew/bin/yabai` o `/usr/local/bin/yabai`. Solo se usan consultas (`yabai -m query`), así que **no hace falta la scripting addition** ni desactivar SIP.
+- Para el gesto de 3 o 4 dedos, un trackpad. Se ha probado con el integrado del MacBook Pro; el atajo de teclado funciona sin él.
 - Para compilar: Xcode con Swift 6 y [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
 
 ## Instalación
@@ -122,6 +124,26 @@ Al pulsar una tarjeta, YabaiBar pulsa por ti el atajo "Ir al escritorio N" de Mi
 2. Da permiso de Accesibilidad a YabaiBar. El primer clic muestra el aviso de macOS; después, actívala en Ajustes del Sistema › Privacidad y seguridad › Accesibilidad.
 
 Si el permiso está marcado pero el clic no cambia de escritorio, la firma de la app cambió: quita YabaiBar de la lista con "−" y vuelve a pulsar una tarjeta para que la pida de nuevo.
+
+### Abrir la isla desde cualquier app
+
+El gesto y el atajo funcionan nada más abrir la app, sin permisos.
+
+- **Gesto:** desliza 3 o 4 dedos hacia abajo en el trackpad. Para que no choque con macOS, deja libre ese movimiento:
+  - En Ajustes del Sistema › Trackpad › Más gestos, App Exposé tiene que estar desactivado, porque usa el mismo movimiento hacia abajo. Mission Control (hacia arriba) y el cambio de escritorio (a los lados) no molestan.
+  - En Ajustes del Sistema › Accesibilidad › Control del puntero, no actives "Arrastrar con tres dedos": con 3 dedos hacia abajo arrastrarías lo que haya bajo el puntero.
+- **Atajo:** ⌥I por defecto. Cámbialo en Ajustes si choca con otra app, o si usas ⌥I para escribir el circunflejo (ˆ). Si macOS no acepta la combinación, la ventana de ajustes lo dice.
+
+### Ajustes
+
+Haz clic en la isla y elige "Ajustes…". Los cambios se aplican al momento y se guardan para la próxima vez.
+
+| Ajuste | Qué hace | Por defecto |
+| --- | --- | --- |
+| Velocidad de las alas | Lo que tardan las alas en recogerse y volver a salir al cambiar de escritorio: Lenta, Normal, Rápida o Sin animación | Normal |
+| Atajo | La combinación que abre y cierra la isla desde cualquier app. Pulsa el botón y luego la combinación nueva; Esc cancela y ⌫ lo quita | ⌥I |
+| Ocultar sola | Abierta con el atajo o el gesto, la isla se cierra sola si no llevas el puntero hasta ella | Activado |
+| Al cabo de | Los segundos que espera antes de ocultarse, de 1 a 10 | 3 s |
 
 ## Desarrollo
 
