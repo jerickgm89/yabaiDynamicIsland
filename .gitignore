@@ -1,7 +1,7 @@
 # Generado por XcodeGen desde project.yml
 YabaiBar.xcodeproj/
 
-# Productos de compilación (yb.sh usa build/DerivedData)
+# Productos de compilación (yb.sh usa build/DerivedData.noindex)
 build/
 DerivedData/
 

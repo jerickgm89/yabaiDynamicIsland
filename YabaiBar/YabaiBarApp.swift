@@ -38,7 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.store = store
         let menu = AppMenu(store: store, launchAtLogin: LaunchAtLogin())
         self.menu = menu
-        island = IslandController(store: store, icons: AppIcons(), menu: menu)
+        island = IslandController(store: store, icons: AppIcons(), menu: menu, focuser: ShortcutFocuser())
 
         let center = NSWorkspace.shared.notificationCenter
         workspaceObservers = Self.refreshNotifications.map { name in
@@ -71,7 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 store?.requestRefresh()
             #if DEBUG
             case "snapshot":
-                island?.saveSnapshot(expanded: url.query() == "abierta")
+                island?.saveSnapshot(expanded: url.query() == "abierta", hoveringCard: url.query() == "hover")
             case "stress":
                 island?.stressTest()
             #endif

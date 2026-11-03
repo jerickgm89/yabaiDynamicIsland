@@ -80,4 +80,17 @@ struct IslandExpandedLayout: Equatable {
         cardWidth = count > 0 ? min(Self.cardWidth, (bodyWidth - 2 * Self.padding - gaps) / count) : 0
         height = topHeight + Self.gapBelowNotch + Self.cardHeight + Self.padding
     }
+
+    /// La tarjeta bajo un punto de la isla (origen arriba a la izquierda), o `nil` en los huecos y fuera de
+    /// la fila. La fila de tarjetas va centrada en la isla, debajo de la franja del notch.
+    func cardIndex(at point: CGPoint, islandWidth: CGFloat, topHeight: CGFloat) -> Int? {
+        let top = topHeight + Self.gapBelowNotch
+        guard !spaces.isEmpty, point.y >= top, point.y < top + Self.cardHeight else { return nil }
+        let rowWidth = CGFloat(spaces.count) * cardWidth + CGFloat(spaces.count - 1) * Self.cardSpacing
+        let x = point.x - (islandWidth - rowWidth) / 2
+        guard x >= 0, x < rowWidth else { return nil }
+        let index = Int(x / (cardWidth + Self.cardSpacing))
+        let offset = x - CGFloat(index) * (cardWidth + Self.cardSpacing)
+        return offset < cardWidth ? index : nil
+    }
 }

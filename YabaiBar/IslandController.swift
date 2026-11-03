@@ -3,7 +3,8 @@ import Observation
 import SwiftUI
 import os
 
-// Coloca la isla sobre el notch, la anima cuando cambian los espacios y abre el menú con cualquier clic.
+// Coloca la isla sobre el notch, la anima cuando cambian los espacios y, abierta, lleva al escritorio de la
+// tarjeta que se pulse; cualquier otro clic abre el menú.
 // En reposo la ventana mide justo lo que la isla, para no tapar los clics de la barra de menús alrededor.
 @MainActor
 final class IslandController {
@@ -27,6 +28,11 @@ final class IslandController {
     /// Lo que tiene que estar el puntero encima para que la isla se abra
     static let openDelay: Duration = .milliseconds(300)
     static let pointerCheckInterval: Duration = .milliseconds(120)
+    /// Las tarjetas se iluminan bajo el puntero y se hunden al pulsarlas
+    static let cardAnimation = Animation.smooth(duration: 0.2)
+    /// Al elegir un escritorio la isla se recoge entera en el notch; el atajo se pulsa cuando ya casi lo ha hecho,
+    /// para que el encogimiento se vea antes de que macOS empiece a deslizar
+    static let switchDelay: Duration = .milliseconds(200)
     /// Margen de la ventana alrededor de la isla para que quepa la sombra
     static let shadowMargin: CGFloat = 16
 
@@ -41,6 +47,7 @@ final class IslandController {
     private let model = IslandModel()
     private let store: SpacesStore
     private let icons: AppIcons
+    private let focuser: ShortcutFocuser
     private var geometry: NotchGeometry?
     private var screenWidth: CGFloat = 0
     // Copias de lo dibujado. No se leen del modelo dentro de render(): withObservationTracking
@@ -56,14 +63,18 @@ final class IslandController {
     private var screenObserver: NSObjectProtocol?
     private var occlusionObserver: NSObjectProtocol?
 
-    init(store: SpacesStore, icons: AppIcons, menu: AppMenu) {
+    init(store: SpacesStore, icons: AppIcons, menu: AppMenu, focuser: ShortcutFocuser) {
         self.store = store
         self.icons = icons
+        self.focuser = focuser
         hosting = IslandHostingView(rootView: IslandView(model: model))
         // Que la vista no cambie el tamaño de la ventana: el marco lo decide NotchGeometry
         hosting.sizingOptions = []
         hosting.menuOnClick = menu.menu
         hosting.onPointerEntered = { [weak self] in self?.pointerEntered() }
+        hosting.onPointerMoved = { [weak self] in self?.updateHoveredCard() }
+        hosting.onPress = { [weak self] in self?.pressCard() ?? false }
+        hosting.onRelease = { [weak self] in self?.releaseCard() }
         // El hosting va dentro de un contenedor y no como contentView: si lo es, intenta ajustar (y animar)
         // el tamaño de la ventana a la isla, choca con nuestros setFrame y, con cambios de espacio muy
         // seguidos, AppKit lanza una excepción por demasiadas pasadas de restricciones y cierra la app
@@ -219,8 +230,9 @@ final class IslandController {
     // MARK: - Hover
 
     private func pointerEntered() {
-        // La ventana puede medir más que la isla durante una animación: solo cuenta entrar en la isla
-        guard expansion == .closed, !currentSpaces.isEmpty, pointerIsOverIsland() else { return }
+        // La ventana puede medir más que la isla durante una animación: solo cuenta entrar en la isla.
+        // Mientras cambia el escritorio (alas recogidas) no se abre
+        guard expansion == .closed, tuckedAt == nil, !currentSpaces.isEmpty, pointerIsOverIsland() else { return }
         expansion = .peek
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         growWindow()
@@ -241,6 +253,8 @@ final class IslandController {
 
     private func open() {
         expansion = .open
+        // Los atajos se leen al abrir: así se ven los cambios hechos en Ajustes sin reiniciar la app
+        model.shortcutLabels = focuser.labels(for: currentSpaces.map(\.index))
         growWindow()
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         withAnimation(reduceMotion ? Self.reducedAnimation : Self.openAnimation) { model.isExpanded = true }
@@ -256,6 +270,8 @@ final class IslandController {
         withAnimation(reduceMotion ? Self.reducedAnimation : Self.closeAnimation) {
             model.isExpanded = false
             model.hovering = false
+            model.hoveredSpace = nil
+            model.pressedSpace = nil
         }
         settleWindow()
         if wasOpen { Logger.app.info("Isla cerrada") }
@@ -263,6 +279,7 @@ final class IslandController {
 
     // Mientras el puntero está encima se mira dónde está cada 120 ms. Los avisos de salida de macOS fallan en
     // el borde superior de la pantalla, justo donde vive la isla. Con la isla cerrada no corre nada.
+    // También repasa la tarjeta bajo el puntero, por si se perdió algún aviso de movimiento.
     private func watchPointer() {
         pointerWatch?.cancel()
         pointerWatch = Task {
@@ -273,6 +290,7 @@ final class IslandController {
                     close()
                     return
                 }
+                updateHoveredCard()
             }
         }
     }
@@ -282,6 +300,95 @@ final class IslandController {
         guard let geometry else { return false }
         let island = geometry.windowFrame(width: model.islandWidth, height: model.islandHeight)
         return island.insetBy(dx: -2, dy: -2).contains(NSEvent.mouseLocation)
+    }
+
+    // MARK: - Tarjetas
+
+    // La tarjeta bajo el puntero con la isla abierta. Sale de la geometría de la isla en pantalla y no de onHover
+    // de SwiftUI, que no es fiable en un panel que nunca se activa.
+    private func spaceUnderPointer() -> SpaceSummary? {
+        guard expansion == .open, let geometry else { return nil }
+        let island = geometry.windowFrame(width: model.islandWidth, height: model.islandHeight)
+        let pointer = NSEvent.mouseLocation
+        // Coordenadas de la isla con el origen arriba a la izquierda, como las dibuja SwiftUI
+        let point = CGPoint(x: pointer.x - island.minX, y: island.maxY - pointer.y)
+        let expanded = model.expanded
+        guard let index = expanded.cardIndex(at: point, islandWidth: island.width, topHeight: geometry.notch.height) else {
+            return nil
+        }
+        return expanded.spaces[index]
+    }
+
+    // Solo se iluminan las tarjetas a las que se puede ir
+    private func updateHoveredCard() {
+        let hovered = spaceUnderPointer().flatMap { model.canSwitch(to: $0) ? $0.index : nil }
+        guard hovered != model.hoveredSpace else { return }
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        withAnimation(reduceMotion ? Self.reducedAnimation : Self.cardAnimation) { model.hoveredSpace = hovered }
+    }
+
+    /// Pulsar una tarjeta la hunde. Devuelve false si el clic no cae en ninguna, y entonces se abre el menú
+    private func pressCard() -> Bool {
+        guard let space = spaceUnderPointer() else { return false }
+        guard model.canSwitch(to: space) else { return true }
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        withAnimation(reduceMotion ? Self.reducedAnimation : Self.cardAnimation) {
+            model.hoveredSpace = space.index
+            model.pressedSpace = space.index
+        }
+        return true
+    }
+
+    // Como un botón: el cambio llega al soltar, y solo si el puntero sigue en la misma tarjeta
+    private func releaseCard() {
+        guard let pressed = model.pressedSpace else { return }
+        let space = spaceUnderPointer()
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        withAnimation(reduceMotion ? Self.reducedAnimation : Self.cardAnimation) { model.pressedSpace = nil }
+        guard let space, space.index == pressed else { return }
+        switchTo(space)
+    }
+
+    private func switchTo(_ space: SpaceSummary) {
+        // Ya estás ahí: solo se cierra la isla
+        guard !space.isFocused else { return close() }
+        switch focuser.readiness(for: space.index) {
+        case .noShortcut:
+            Logger.app.info("El escritorio \(space.index) no tiene atajo en Ajustes › Teclado › Atajos")
+        case .needsPermission:
+            Logger.app.info("Falta el permiso de Accesibilidad para ir al escritorio \(space.index)")
+            close()
+            focuser.requestPermission()
+        case .ready:
+            Logger.app.info("Clic: ir al escritorio \(space.index)")
+            collapseIntoNotch()
+            Task {
+                try? await Task.sleep(for: Self.switchDelay)
+                if !focuser.focus(space: space.index) {
+                    Logger.app.error("No se pudo pulsar el atajo del escritorio \(space.index)")
+                }
+            }
+            // Si el escritorio no llega a cambiar, las alas vuelven solas
+            scheduleUntuck(after: Self.switchDelay + Self.tuckTimeout)
+        }
+    }
+
+    // Cierra la isla y recoge las alas en un solo movimiento: se encoge hasta el notch y, al llegar al
+    // escritorio nuevo, las alas salen con su contenido como en cualquier otro cambio (ver occlusionChanged)
+    private func collapseIntoNotch() {
+        openTask?.cancel()
+        pointerWatch?.cancel()
+        untuckTask?.cancel()
+        expansion = .closed
+        tuckedAt = .now
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        withAnimation(reduceMotion ? Self.reducedAnimation : Self.closeAnimation) {
+            model.isExpanded = false
+            model.hovering = false
+            model.hoveredSpace = nil
+            model.wingsTucked = true
+        }
+        settleWindow()
     }
 
     // MARK: - Ventana
@@ -363,21 +470,27 @@ final class IslandContainerView: NSView {
     }
 }
 
-// Cualquier clic sobre la isla abre el menú de la app
+// El clic en una tarjeta de la isla abierta lo gestiona IslandController; cualquier otro abre el menú de la app
 final class IslandHostingView: NSHostingView<IslandView> {
     var menuOnClick: NSMenu?
     var onPointerEntered: (@MainActor () -> Void)?
+    var onPointerMoved: (@MainActor () -> Void)?
+    /// Devuelve true si el clic cae en una tarjeta; si no, se abre el menú
+    var onPress: (@MainActor () -> Bool)?
+    var onRelease: (@MainActor () -> Void)?
     private var trackingArea: NSTrackingArea?
 
     // La isla vive en un panel que nunca se activa: el primer clic tiene que llegar igualmente
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    // Solo la entrada: la salida la vigila IslandController mirando la posición del puntero.
-    // `.activeAlways` porque la app nunca es la activa
+    // La entrada y el movimiento (para la tarjeta bajo el puntero): la salida la vigila IslandController
+    // mirando la posición del puntero. `.activeAlways` porque la app nunca es la activa
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let trackingArea { removeTrackingArea(trackingArea) }
-        let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self)
+        let area = NSTrackingArea(
+            rect: .zero, options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect], owner: self
+        )
         addTrackingArea(area)
         trackingArea = area
     }
@@ -387,7 +500,18 @@ final class IslandHostingView: NSHostingView<IslandView> {
         onPointerEntered?()
     }
 
-    override func mouseDown(with event: NSEvent) { showMenu(for: event) }
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        onPointerMoved?()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        if onPress?() == true { return }
+        showMenu(for: event)
+    }
+
+    // AppKit manda el mouseUp a la vista que recibió el mouseDown, aunque el puntero ya no esté encima
+    override func mouseUp(with event: NSEvent) { onRelease?() }
 
     override func rightMouseDown(with event: NSEvent) { showMenu(for: event) }
 
@@ -418,11 +542,20 @@ extension IslandController {
     }
 
     /// Guarda la isla como PNG ampliado y sobre un fondo gris, para revisarla sin mirar la pantalla.
-    /// Con `expanded`, la dibuja abierta un instante (se restaura enseguida, sin llegar a la pantalla).
-    func saveSnapshot(expanded: Bool = false) {
+    /// Con `expanded`, la dibuja abierta un instante (se restaura enseguida, sin llegar a la pantalla);
+    /// con `hoveringCard`, además con el puntero sobre la primera tarjeta inactiva a la que se puede ir.
+    func saveSnapshot(expanded: Bool = false, hoveringCard: Bool = false) {
         let wasExpanded = model.isExpanded
-        model.isExpanded = expanded || wasExpanded
-        defer { model.isExpanded = wasExpanded }
+        let wasHovered = model.hoveredSpace
+        model.isExpanded = expanded || hoveringCard || wasExpanded
+        if model.isExpanded { model.shortcutLabels = focuser.labels(for: currentSpaces.map(\.index)) }
+        if hoveringCard {
+            model.hoveredSpace = currentSpaces.first { !$0.isFocused && model.canSwitch(to: $0) }?.index
+        }
+        defer {
+            model.isExpanded = wasExpanded
+            model.hoveredSpace = wasHovered
+        }
         let size = CGSize(width: model.islandWidth + 2 * Self.shadowMargin, height: model.islandHeight + Self.shadowMargin)
         let content = hosting.rootView
             .frame(width: size.width, height: size.height)

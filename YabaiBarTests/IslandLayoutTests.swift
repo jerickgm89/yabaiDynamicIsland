@@ -89,6 +89,31 @@ struct IslandExpandedLayoutTests {
         #expect(layout.bodyWidth == 1000)
         #expect(layout.cardWidth == 90)
     }
+
+    // Isla de 580 + 2 × 19 = 618; la fila mide 4 × 132 + 3 × 8 = 552 y empieza en (618 - 552) / 2 = 33.
+    // Las tarjetas van de y = 38 + 8 = 46 a 46 + 70 = 116
+    @Test(arguments: [
+        (CGPoint(x: 40, y: 60), 0 as Int?),
+        (CGPoint(x: 180, y: 46), 1),
+        (CGPoint(x: 584, y: 115), 3),
+        (CGPoint(x: 169, y: 60), nil), // hueco entre la 1 y la 2
+        (CGPoint(x: 20, y: 60), nil), // margen izquierdo
+        (CGPoint(x: 100, y: 30), nil), // franja del notch
+        (CGPoint(x: 100, y: 116), nil), // margen inferior
+    ])
+    func findsTheCardUnderAPoint(point: CGPoint, card: Int?) {
+        let spaces = (1...4).map { summary($0, apps: 1, focused: $0 == 2) }
+        let layout = IslandExpandedLayout(spaces: spaces, minBodyWidth: 396, maxBodyWidth: 1958, topHeight: 38)
+        #expect(layout.cardIndex(at: point, islandWidth: 618, topHeight: 38) == card)
+    }
+
+    // Con una sola tarjeta en una isla más ancha, la fila sigue centrada: empieza en (434 - 132) / 2 = 151
+    @Test func cardsStayCenteredInAWiderIsland() {
+        let layout = IslandExpandedLayout(spaces: [summary(1, apps: 1, focused: true)], minBodyWidth: 396, maxBodyWidth: 1958, topHeight: 38)
+        #expect(layout.cardIndex(at: CGPoint(x: 150, y: 60), islandWidth: 434, topHeight: 38) == nil)
+        #expect(layout.cardIndex(at: CGPoint(x: 151, y: 60), islandWidth: 434, topHeight: 38) == 0)
+        #expect(layout.cardIndex(at: CGPoint(x: 283, y: 60), islandWidth: 434, topHeight: 38) == nil)
+    }
 }
 
 @MainActor
@@ -126,6 +151,15 @@ struct IslandModelTests {
         model.isExpanded = true
         #expect(model.islandWidth == 580 + 2 * IslandView.openTopRadius)
         #expect(model.islandHeight == 130)
+    }
+
+    // Se puede ir con clic a los escritorios con atajo; la tarjeta del activo siempre responde (cierra la isla)
+    @Test func onlyCardsWithAShortcutCanSwitch() {
+        let model = IslandModel()
+        model.shortcutLabels = [1: "⌥1", 2: "⌥2"]
+        #expect(model.canSwitch(to: summary(1, apps: 0)))
+        #expect(!model.canSwitch(to: summary(5, apps: 1)))
+        #expect(model.canSwitch(to: summary(5, apps: 1, focused: true)))
     }
 }
 

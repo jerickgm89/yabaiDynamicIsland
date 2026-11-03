@@ -20,6 +20,17 @@ final class IslandModel {
     var hoverCount = 0
     var isExpanded = false
     var reduceMotion = false
+    /// Escritorio de la tarjeta bajo el puntero, con la isla abierta
+    var hoveredSpace: Int?
+    /// Escritorio de la tarjeta que se está pulsando
+    var pressedSpace: Int?
+    /// Atajo de Mission Control de cada escritorio ("⌥1"); los que no tienen no aparecen
+    var shortcutLabels: [Int: String] = [:]
+
+    /// Se va a un escritorio desde su tarjeta con su atajo; la del activo solo cierra la isla
+    func canSwitch(to space: SpaceSummary) -> Bool {
+        space.isFocused || shortcutLabels[space.index] != nil
+    }
 
     /// Ancho de cada ala tal como se ve ahora; con "Reducir movimiento" las alas no se recogen, solo se funden
     var visibleWingWidth: CGFloat {
@@ -50,6 +61,11 @@ struct IslandView: View {
     static let hoverGrowth: CGFloat = 8
     /// El número activo se dibuja a 12 pt y se escala, igual que los inactivos
     static let activeNumberScale: CGFloat = 17.0 / 12.0
+    // Bajo el puntero, la tarjeta se ilumina, se redondea un poco más y se acerca; al pulsarla, se hunde
+    static let cardRadius: CGFloat = 12
+    static let hoveredCardRadius: CGFloat = 15
+    static let hoveredCardScale: CGFloat = 1.04
+    static let pressedCardScale: CGFloat = 0.96
 
     let model: IslandModel
 
@@ -85,7 +101,7 @@ struct IslandView: View {
         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .top)
     }
 
-    // Isla abierta: una tarjeta por espacio, que entran escalonadas
+    // Isla abierta: una tarjeta por espacio, que entran escalonadas. Al pasar de una tarjeta a otra vibra el trackpad
     private var cards: some View {
         HStack(spacing: IslandExpandedLayout.cardSpacing) {
             ForEach(model.expanded.spaces) { space in
@@ -99,20 +115,30 @@ struct IslandView: View {
                     )
             }
         }
+        .sensoryFeedback(.alignment, trigger: model.hoveredSpace) { _, hovered in hovered != nil }
     }
 
     private func card(for space: SpaceSummary) -> some View {
         let accent = SpaceAccent.color(for: space.index)
+        let hovered = model.hoveredSpace == space.index
+        let shape = RoundedRectangle(cornerRadius: hovered ? Self.hoveredCardRadius : Self.cardRadius, style: .continuous)
+        // El activo lleva siempre su color; bajo el puntero, cualquiera lo muestra más suave
+        let border = space.isFocused ? accent : hovered ? accent.opacity(0.55) : .clear
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("\(space.index)")
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(accent)
                 Spacer(minLength: 0)
-                if (1...9).contains(space.index) {
-                    Text("⌥\(space.index)")
+                if let label = model.shortcutLabels[space.index] {
+                    Text(label)
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.45))
+                        .foregroundStyle(.white.opacity(hovered ? 0.75 : 0.45))
+                } else if !space.isFocused {
+                    // Sin "Ir al escritorio N" en Ajustes › Teclado › Atajos no se puede ir con clic
+                    Text("Sin atajo")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.25))
                 }
             }
             HStack(spacing: 4) {
@@ -137,8 +163,16 @@ struct IslandView: View {
         }
         .padding(10)
         .frame(width: model.expanded.cardWidth, height: IslandExpandedLayout.cardHeight, alignment: .topLeading)
-        .background(RoundedRectangle(cornerRadius: 12).fill(.white.opacity(0.06)))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(space.isFocused ? accent : .clear, lineWidth: 1.5))
+        .background(shape.fill(.white.opacity(hovered ? 0.12 : 0.06)))
+        .overlay(shape.strokeBorder(border, lineWidth: 1.5))
+        .scaleEffect(cardScale(for: space))
+    }
+
+    // Con "Reducir movimiento" la tarjeta no cambia de tamaño: solo de luz y de borde
+    private func cardScale(for space: SpaceSummary) -> CGFloat {
+        guard !model.reduceMotion else { return 1 }
+        if model.pressedSpace == space.index { return Self.pressedCardScale }
+        return model.hoveredSpace == space.index ? Self.hoveredCardScale : 1
     }
 
     private var leftWing: some View {
