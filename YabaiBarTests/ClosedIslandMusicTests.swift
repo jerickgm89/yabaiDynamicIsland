@@ -86,7 +86,7 @@ struct MusicIndicatorLayoutTests {
     @Test func theBarsWidenTheWings() {
         let spaces = [summary(1, apps: 1, focused: true), summary(2, apps: 1), summary(3, apps: 0), summary(4, apps: 1)]
         #expect(IslandLayout(spaces: spaces).wingWidth == 86)
-        let withMusic = IslandLayout(spaces: spaces, musicIndicator: true)
+        let withMusic = IslandLayout(spaces: spaces, statusItems: [.music])
         #expect(withMusic.showsMusicIndicator)
         #expect(withMusic.wingWidth == 106)
         #expect(withMusic.tokenWidth == IslandLayout.tokenWidth)
@@ -96,7 +96,7 @@ struct MusicIndicatorLayoutTests {
     @Test func noBarsWhenCollapsed() {
         var fullscreen = summary(1, apps: 1, focused: true)
         fullscreen.isFullscreen = true
-        let layout = IslandLayout(spaces: [fullscreen, summary(2, apps: 0)], musicIndicator: true)
+        let layout = IslandLayout(spaces: [fullscreen, summary(2, apps: 0)], statusItems: [.music, .keepAwake])
         #expect(!layout.showsMusicIndicator)
         #expect(layout.wingWidth == 0)
     }

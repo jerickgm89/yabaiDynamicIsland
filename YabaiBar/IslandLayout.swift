@@ -1,9 +1,21 @@
 import Foundation
 
-// Geometría pura de las alas: el espacio activo va a la izquierda del notch y los inactivos a la derecha, con las
-// barras de la música al final si suena algo. Las dos alas miden lo mismo (lo que necesite la más ancha), dentro
-// de un mínimo y un máximo.
+// Geometría pura de las alas: el espacio activo va a la izquierda del notch y los inactivos a la derecha, con los
+// indicadores al final (la música y mantener despierto). Las dos alas miden lo mismo (lo que necesite la más
+// ancha), dentro de un mínimo y un máximo.
 struct IslandLayout: Equatable {
+    /// Lo que va al final del ala derecha, siempre en este orden
+    enum StatusItem: Hashable, CaseIterable {
+        case music, keepAwake
+
+        var width: CGFloat {
+            switch self {
+            case .music: IslandLayout.musicIndicatorWidth
+            case .keepAwake: 12
+            }
+        }
+    }
+
     static let minWingWidth: CGFloat = 70
     static let maxWingWidth: CGFloat = 150
     /// Del borde exterior del ala a su contenido
@@ -31,19 +43,21 @@ struct IslandLayout: Equatable {
     let tokenWidth: CGFloat
     /// El espacio activo es una app a pantalla completa: la isla se recoge al tamaño del notch para no estorbar
     let isCollapsed: Bool
-    /// Las barras de la música al final del ala derecha. Recogida a pantalla completa, nunca
-    let showsMusicIndicator: Bool
+    /// Los indicadores del final del ala derecha. Recogida a pantalla completa, ninguno
+    let statusItems: [StatusItem]
+
+    var showsMusicIndicator: Bool { statusItems.contains(.music) }
 
     var shownApps: ArraySlice<SpaceApp> { active?.apps.prefix(Self.maxIcons) ?? [] }
     var overflow: Int { max(0, (active?.apps.count ?? 0) - Self.maxIcons) }
 
-    init(spaces: [SpaceSummary], musicIndicator: Bool = false) {
+    init(spaces: [SpaceSummary], statusItems: [StatusItem] = []) {
         active = spaces.first(where: \.isFocused)
         inactive = spaces.filter { !$0.isFocused }
         isCollapsed = active?.isFullscreen ?? false
-        showsMusicIndicator = musicIndicator && !isCollapsed
+        self.statusItems = isCollapsed ? [] : StatusItem.allCases.filter(statusItems.contains)
 
-        let indicator = showsMusicIndicator ? Self.musicIndicatorGap + Self.musicIndicatorWidth : 0
+        let indicator = self.statusItems.reduce(0) { $0 + Self.musicIndicatorGap + $1.width }
         let left = Self.leftWidth(appCount: active?.apps.count ?? 0)
         let right = Self.innerPadding + CGFloat(inactive.count) * Self.tokenWidth + indicator + Self.outerPadding
         wingWidth = isCollapsed ? 0 : min(max(left, right, Self.minWingWidth), Self.maxWingWidth)
@@ -81,17 +95,22 @@ struct IslandExpandedLayout: Equatable {
     static let artworkSize: CGFloat = 44
     static let controlSize: CGFloat = 30
     static let controlSpacing: CGFloat = 4
-    static let controls: [MediaControl] = [.previous, .playPause, .next]
+    static let controls: [Control] = [.previous, .playPause, .next]
     static var controlsWidth: CGFloat {
         CGFloat(controls.count) * controlSize + CGFloat(controls.count - 1) * controlSpacing
     }
 
-    enum MediaControl: Equatable {
-        case artwork, previous, playPause, next
+    /// El botón de mantener despierto, arriba a la derecha, a la altura del notch
+    static let keepAwakeSize: CGFloat = 26
+
+    /// Los botones de la isla abierta: los de la franja "Ahora suena" y el de mantener despierto
+    enum Control: Equatable {
+        case artwork, previous, playPause, next, keepAwake
     }
 
     let spaces: [SpaceSummary]
     let hasMedia: Bool
+    let hasKeepAwake: Bool
     /// Ancho del cuerpo, sin las esquinas superiores cóncavas
     let bodyWidth: CGFloat
     let height: CGFloat
@@ -100,16 +119,39 @@ struct IslandExpandedLayout: Equatable {
     /// Ancho de la franja "Ahora suena": todo el cuerpo menos los márgenes
     var mediaWidth: CGFloat { bodyWidth - 2 * Self.padding }
 
-    init(spaces: [SpaceSummary], minBodyWidth: CGFloat, maxBodyWidth: CGFloat, topHeight: CGFloat, hasMedia: Bool = false) {
+    /// `minBodyWidth` es lo que ocupan el notch y las alas en la franja de arriba. Con el botón de mantener
+    /// despierto, el cuerpo deja sitio a cada lado para que no tape las alas
+    init(
+        spaces: [SpaceSummary], minBodyWidth: CGFloat, maxBodyWidth: CGFloat, topHeight: CGFloat, hasMedia: Bool = false,
+        hasKeepAwake: Bool = false
+    ) {
         self.spaces = spaces
         self.hasMedia = hasMedia
+        self.hasKeepAwake = hasKeepAwake
         let count = CGFloat(spaces.count)
         let gaps = max(0, count - 1) * Self.cardSpacing
         let natural = 2 * Self.padding + count * Self.cardWidth + gaps
-        bodyWidth = min(max(minBodyWidth, natural), max(minBodyWidth, maxBodyWidth))
+        let minimum = minBodyWidth + (hasKeepAwake ? 2 * (Self.keepAwakeSize + Self.padding) : 0)
+        bodyWidth = min(max(minimum, natural), max(minimum, maxBodyWidth))
         cardWidth = count > 0 ? min(Self.cardWidth, (bodyWidth - 2 * Self.padding - gaps) / count) : 0
         height = topHeight + Self.gapBelowNotch + Self.cardHeight + (hasMedia ? Self.mediaGap + Self.mediaHeight : 0)
             + Self.padding
+    }
+
+    /// Dónde va el botón de mantener despierto, en coordenadas de la isla (origen arriba a la izquierda)
+    func keepAwakeFrame(islandWidth: CGFloat, topHeight: CGFloat) -> CGRect? {
+        guard hasKeepAwake else { return nil }
+        let x = (islandWidth + bodyWidth) / 2 - Self.padding - Self.keepAwakeSize
+        return CGRect(x: x, y: (topHeight - Self.keepAwakeSize) / 2, width: Self.keepAwakeSize, height: Self.keepAwakeSize)
+    }
+
+    /// El botón bajo un punto de la isla: el de mantener despierto (con un margen, para acertarlo fácil) o uno de
+    /// la franja "Ahora suena"
+    func control(at point: CGPoint, islandWidth: CGFloat, topHeight: CGFloat) -> Control? {
+        if let frame = keepAwakeFrame(islandWidth: islandWidth, topHeight: topHeight), frame.insetBy(dx: -4, dy: -4).contains(point) {
+            return .keepAwake
+        }
+        return mediaControl(at: point, islandWidth: islandWidth, topHeight: topHeight)
     }
 
     /// Si un punto de la isla (origen arriba a la izquierda) cae en la franja "Ahora suena"
@@ -119,7 +161,7 @@ struct IslandExpandedLayout: Equatable {
 
     /// El control de la franja "Ahora suena" bajo un punto de la isla. Cuenta toda la altura de la franja, para
     /// que los botones sean fáciles de acertar
-    func mediaControl(at point: CGPoint, islandWidth: CGFloat, topHeight: CGFloat) -> MediaControl? {
+    func mediaControl(at point: CGPoint, islandWidth: CGFloat, topHeight: CGFloat) -> Control? {
         guard let x = stripX(of: point, islandWidth: islandWidth, topHeight: topHeight) else { return nil }
         if x < Self.artworkSize { return .artwork }
         let controlsX = x - (mediaWidth - Self.controlsWidth)

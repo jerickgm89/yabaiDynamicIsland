@@ -2,7 +2,7 @@
 
 Una isla alrededor del notch del Mac que muestra los espacios de [yabai](https://github.com/asmvik/yabai), con los íconos de sus apps, y resalta el activo. Es una app nativa de macOS escrita en Swift 6 con SwiftUI y AppKit.
 
-La isla vive por encima de la barra de menús, nace del notch como la Dynamic Island y está en todos los escritorios. Para ver qué apps tienes en cada escritorio, ábrela de tres formas: pasa el puntero por encima, desliza 3 o 4 dedos hacia abajo en el trackpad o pulsa un atajo de teclado (⌥I), desde cualquier app. Desde sus tarjetas saltas a cualquier escritorio y, debajo, ves y controlas la música que suena (TIDAL o cualquier app del "Ahora suena" de macOS). Una ventana de ajustes te deja cambiar la velocidad de la animación, el atajo, cuándo se abre y se oculta, y qué música muestra.
+La isla vive por encima de la barra de menús, nace del notch como la Dynamic Island y está en todos los escritorios. Para ver qué apps tienes en cada escritorio, ábrela de tres formas: pasa el puntero por encima, desliza 3 o 4 dedos hacia abajo en el trackpad o pulsa un atajo de teclado (⌥I), desde cualquier app. Desde sus tarjetas saltas a cualquier escritorio y, debajo, ves y controlas la música que suena (TIDAL o cualquier app del "Ahora suena" de macOS). También avisa del cargador y de la batería baja, y puede mantener el Mac despierto. Una ventana de ajustes te deja cambiar la velocidad de la animación, el atajo, cuándo se abre y se oculta, qué música muestra y qué actividades.
 
 Su diseño se inspira en [Atoll](https://github.com/Ebullioscopic/Atoll) (ver [Agradecimientos](#agradecimientos)).
 
@@ -46,6 +46,11 @@ Su diseño se inspira en [Atoll](https://github.com/Ebullioscopic/Atoll) (ver [A
 - Con el puntero sobre la franja, desliza dos dedos hacia la izquierda para pasar a la siguiente canción, o hacia la derecha para volver a la anterior.
 - Funciona con TIDAL y con cualquier app que publique en el "Ahora suena" de macOS (Música, Spotify, el navegador…). En Ajustes puedes limitarlo a TIDAL.
 - Lo lee [mediaremote-adapter](https://github.com/ungive/mediaremote-adapter), que va dentro de la app. Desde macOS 15.4 es la única forma de leer "Ahora suena" desde fuera de Apple, así que una actualización de macOS podría romperlo.
+
+**Actividades**
+
+- Al enchufar o desenchufar el cargador, la isla cerrada enseña 3 s el rayo y el porcentaje. Con poca batería (20 % y 10 %) avisa en naranja y en rojo.
+- En la isla abierta, arriba a la derecha, un sol mantiene el Mac despierto: ni la pantalla ni el sistema se duermen hasta que lo apagues. Mientras está activo, un sol pequeño en la isla cerrada lo recuerda.
 
 **Abierta desde cualquier app**
 
@@ -163,6 +168,8 @@ Haz clic en la isla y elige "Ajustes…". Los cambios se aplican al momento y se
 | De | Cualquier app o solo TIDAL | Cualquier app |
 | Barras en la isla cerrada | Las barras al final del ala derecha mientras hay música | Activado |
 | Avisar al cambiar de canción | La carátula y el título durante 3 s en la isla cerrada | Activado |
+| Batería y cargador | Los avisos al enchufar o desenchufar el cargador y con poca batería | Activado |
+| Botón de mantener despierto | El sol de la isla abierta. Al apagarlo, el Mac deja de mantenerse despierto | Activado |
 
 ## Desarrollo
 
@@ -192,6 +199,7 @@ En la build Debug, la URL `yabaibar://snapshot` (o `yabaibar://snapshot?abierta`
   - `TrackpadMonitor` (con `FingerSwipeDetector`) y `GlobalHotKey` la abren desde cualquier app.
   - `AppSettings` guarda los ajustes y `SettingsWindow` los muestra.
   - `MediaRemoteAdapter` ejecuta el adaptador de música, `NowPlayingParser` entiende lo que manda y `NowPlayingStore` lo publica para la isla.
+  - `BatteryMonitor` y `KeepAwake` se encargan de las actividades del sistema.
 - `Vendor/mediaremote-adapter/`: el código de mediaremote-adapter, sin cambios y con su licencia. Lo compila el target `MediaRemoteAdapter` de `project.yml`.
 - `YabaiBarTests/`: tests con Swift Testing y fixtures JSON reales de yabai. Se ejecutan dentro de la app, que también consulta el yabai real.
 - `assets/`: las capturas de este README.

@@ -25,6 +25,8 @@ struct AppSettingsTests {
             #expect(settings.nowPlayingSource == .any)
             #expect(settings.showMusicBars)
             #expect(settings.announceTracks)
+            #expect(settings.batteryAlerts)
+            #expect(settings.keepAwakeButton)
         }
     }
 
@@ -41,6 +43,8 @@ struct AppSettingsTests {
             settings.nowPlayingSource = .tidal
             settings.showMusicBars = false
             settings.announceTracks = false
+            settings.batteryAlerts = false
+            settings.keepAwakeButton = false
 
             let reloaded = AppSettings(defaults: defaults)
             #expect(reloaded.switchSpeed == .fast)
@@ -52,6 +56,8 @@ struct AppSettingsTests {
             #expect(reloaded.nowPlayingSource == .tidal)
             #expect(!reloaded.showMusicBars)
             #expect(!reloaded.announceTracks)
+            #expect(!reloaded.batteryAlerts)
+            #expect(!reloaded.keepAwakeButton)
         }
     }
 

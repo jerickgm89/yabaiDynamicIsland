@@ -57,6 +57,16 @@ final class AppSettings {
         didSet { defaults.set(announceTracks, forKey: Key.announceTracks) }
     }
 
+    /// Avisos al enchufar o desenchufar el cargador y con poca batería
+    var batteryAlerts: Bool {
+        didSet { defaults.set(batteryAlerts, forKey: Key.batteryAlerts) }
+    }
+
+    /// El botón de mantener despierto en la isla abierta. Al apagarlo, el Mac deja de mantenerse despierto
+    var keepAwakeButton: Bool {
+        didSet { defaults.set(keepAwakeButton, forKey: Key.keepAwakeButton) }
+    }
+
     /// Mientras se graba un atajo nuevo no se escucha el actual: Carbon se lo quedaría antes que la ventana
     var isRecordingShortcut = false
     /// Por qué no se pudo registrar el atajo, para mostrarlo en los ajustes
@@ -74,6 +84,8 @@ final class AppSettings {
         static let nowPlayingSource = "nowPlayingSource"
         static let showMusicBars = "showMusicBars"
         static let announceTracks = "announceTracks"
+        static let batteryAlerts = "batteryAlerts"
+        static let keepAwakeButton = "keepAwakeButton"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -96,6 +108,8 @@ final class AppSettings {
         nowPlayingSource = defaults.string(forKey: Key.nowPlayingSource).flatMap(NowPlayingSource.init(rawValue:)) ?? .any
         showMusicBars = defaults.object(forKey: Key.showMusicBars) as? Bool ?? true
         announceTracks = defaults.object(forKey: Key.announceTracks) as? Bool ?? true
+        batteryAlerts = defaults.object(forKey: Key.batteryAlerts) as? Bool ?? true
+        keepAwakeButton = defaults.object(forKey: Key.keepAwakeButton) as? Bool ?? true
     }
 }
 

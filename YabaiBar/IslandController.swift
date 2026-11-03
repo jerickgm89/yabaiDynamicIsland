@@ -38,7 +38,6 @@ final class IslandController {
     static let shadowMargin: CGFloat = 16
     /// TIDAL manda dos avisos seguidos por cada canción nueva: el aviso espera a que se calme
     static let trackPeekDelay: Duration = .milliseconds(600)
-    static let trackPeekDuration: Duration = .seconds(3)
     /// Lo que se hunde el botón al cambiar de canción con el gesto de lado
     static let swipeFlash: Duration = .milliseconds(180)
 
@@ -56,6 +55,7 @@ final class IslandController {
     private let focuser: ShortcutFocuser
     private let settings: AppSettings
     private let media: NowPlayingStore
+    private let keepAwake: KeepAwake
     private var geometry: NotchGeometry?
     private var screenWidth: CGFloat = 0
     // Copias de lo dibujado. No se leen del modelo dentro de render(): withObservationTracking
@@ -65,10 +65,11 @@ final class IslandController {
     private var currentFailed = false
     /// Hay música: la isla abierta tiene la franja "Ahora suena" y la cerrada, las barras
     private var currentHasMedia = false
-    /// El aviso de canción nueva está a la vista: las alas miden el máximo
-    private var showsTrackPeek = false
+    /// El aviso que enseña la isla cerrada en lugar de los espacios (canción nueva o batería)
+    private var currentPeek: IslandPeek?
     private var trackChanges = TrackChangeDetector()
-    private var trackPeekTask: Task<Void, Never>?
+    private var batteryEvents = BatteryEventDetector()
+    private var peekTask: Task<Void, Never>?
     private var sideSwipe = SideSwipeTracker()
     private var expansion = Expansion.closed
     private var settleTask: Task<Void, Never>?
@@ -87,13 +88,14 @@ final class IslandController {
 
     init(
         store: SpacesStore, icons: AppIcons, menu: AppMenu, focuser: ShortcutFocuser, settings: AppSettings,
-        media: NowPlayingStore
+        media: NowPlayingStore, keepAwake: KeepAwake
     ) {
         self.store = store
         self.icons = icons
         self.focuser = focuser
         self.settings = settings
         self.media = media
+        self.keepAwake = keepAwake
         hosting = IslandHostingView(rootView: IslandView(model: model))
         // Que la vista no cambie el tamaño de la ventana: el marco lo decide NotchGeometry
         hosting.sizingOptions = []
@@ -160,7 +162,9 @@ final class IslandController {
 
     private func apply(spaces: [SpaceSummary], failed: Bool) {
         guard let geometry else { return }
-        let layout = IslandLayout(spaces: spaces, musicIndicator: currentHasMedia && settings.showMusicBars)
+        // Con el botón de mantener despierto apagado en Ajustes, el Mac deja de mantenerse despierto
+        if !settings.keepAwakeButton { keepAwake.stop() }
+        let layout = IslandLayout(spaces: spaces, statusItems: statusItems())
         currentLayout = layout
         currentSpaces = spaces
         currentFailed = failed
@@ -174,6 +178,7 @@ final class IslandController {
             self.model.icons = self.icons.icons(for: spaces)
             self.model.fallbackText = spaces.isEmpty ? description : nil
             self.model.reduceMotion = reduceMotion
+            self.model.keepAwakeActive = self.keepAwake.isActive
         }
 
         // La ventana crece antes de animar y se ajusta al terminar, para que la isla nunca se recorte
@@ -191,6 +196,15 @@ final class IslandController {
         }
         settleWindow()
         Logger.app.info("Isla: \(description, privacy: .public) (alas de \(Int(layout.wingWidth)) pt)")
+    }
+
+    // Lo que va al final del ala derecha. Se lee aquí, dentro de render(), para que los cambios de la música y de
+    // mantener despierto (y sus ajustes) vuelvan a dibujar las alas
+    private func statusItems() -> [IslandLayout.StatusItem] {
+        var items: [IslandLayout.StatusItem] = []
+        if currentHasMedia && settings.showMusicBars { items.append(.music) }
+        if keepAwake.isActive { items.append(.keepAwake) }
+        return items
     }
 
     // MARK: - Cambio de escritorio
@@ -226,14 +240,14 @@ final class IslandController {
         guard expansion == .closed, !currentSpaces.isEmpty, tuckedAt == nil else { return }
         tuckedAt = .now
         untuckTask?.cancel()
-        // El aviso de canción nueva se recoge con las alas
-        trackPeekTask?.cancel()
-        showsTrackPeek = false
+        // El aviso se recoge con las alas
+        peekTask?.cancel()
+        currentPeek = nil
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         let animation = reduceMotion ? Self.reducedAnimation : settings.switchSpeed.animation(Self.tuckAnimation)
         withAnimation(animation) {
             model.wingsTucked = true
-            model.showsTrackPeek = false
+            model.peek = nil
         }
     }
 
@@ -263,7 +277,8 @@ final class IslandController {
             // Como en Atoll, la isla abierta deja al menos 30 pt libres a cada lado de la pantalla
             maxBodyWidth: screenWidth - 60 - 2 * IslandView.openTopRadius,
             topHeight: geometry.notch.height,
-            hasMedia: currentHasMedia
+            hasMedia: currentHasMedia,
+            hasKeepAwake: settings.keepAwakeButton
         )
     }
 
@@ -295,38 +310,48 @@ final class IslandController {
         }
         // Si la música aparece o desaparece, cambian las alas (barras) y el alto de la isla abierta (franja)
         if appeared || barsChanged { apply(spaces: currentSpaces, failed: currentFailed) }
-        if trackChanges.update(nowPlaying), settings.announceTracks { scheduleTrackPeek() }
+        if trackChanges.update(nowPlaying), settings.announceTracks { schedulePeek(.track, after: Self.trackPeekDelay) }
     }
 
-    // Al empezar una canción nueva, la isla cerrada enseña unos segundos la carátula y el título
-    private func scheduleTrackPeek() {
-        trackPeekTask?.cancel()
-        trackPeekTask = Task {
-            try? await Task.sleep(for: Self.trackPeekDelay)
+    // MARK: - Avisos de la isla cerrada
+
+    /// Aviso de BatteryMonitor: si el cargador cambia o la batería baja de un umbral, la isla lo enseña
+    func batteryChanged(_ state: BatteryState) {
+        guard let event = batteryEvents.update(state), settings.batteryAlerts else { return }
+        Logger.app.info("Batería: \(String(describing: event), privacy: .public) al \(state.level) %")
+        schedulePeek(.battery(event, level: state.level))
+    }
+
+    // La canción nueva o la batería: la isla cerrada lo enseña unos segundos en lugar de los espacios. Un aviso nuevo
+    // sustituye al que se esté viendo
+    private func schedulePeek(_ peek: IslandPeek, after delay: Duration = .zero) {
+        peekTask?.cancel()
+        peekTask = Task {
+            try? await Task.sleep(for: delay)
             guard !Task.isCancelled else { return }
-            setTrackPeek(true)
-            try? await Task.sleep(for: Self.trackPeekDuration)
+            setPeek(peek)
+            try? await Task.sleep(for: peek.duration)
             guard !Task.isCancelled else { return }
-            setTrackPeek(false)
+            setPeek(nil)
         }
     }
 
-    private func cancelTrackPeek() {
-        trackPeekTask?.cancel()
-        setTrackPeek(false)
+    private func cancelPeek() {
+        peekTask?.cancel()
+        setPeek(nil)
     }
 
     // Solo con la isla cerrada, a la vista y con espacios: nunca mientras cambia el escritorio ni a pantalla completa
-    private func setTrackPeek(_ visible: Bool) {
-        guard visible != showsTrackPeek else { return }
-        guard !visible || (expansion == .closed && tuckedAt == nil && !currentLayout.isCollapsed && !currentSpaces.isEmpty)
+    private func setPeek(_ peek: IslandPeek?) {
+        guard peek != currentPeek else { return }
+        guard peek == nil || (expansion == .closed && tuckedAt == nil && !currentLayout.isCollapsed && !currentSpaces.isEmpty)
         else { return }
-        showsTrackPeek = visible
+        currentPeek = peek
         growWindow()
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        withAnimation(reduceMotion ? Self.reducedAnimation : Self.changeAnimation) { model.showsTrackPeek = visible }
+        withAnimation(reduceMotion ? Self.reducedAnimation : Self.changeAnimation) { model.peek = peek }
         settleWindow()
-        if visible { Logger.app.info("Isla: aviso de canción nueva") }
+        if peek == .track { Logger.app.info("Isla: aviso de canción nueva") }
     }
 
     // MARK: - Gesto de lado sobre la música
@@ -337,7 +362,7 @@ final class IslandController {
         guard let direction = sideSwipe.track(sample),
               let (point, islandWidth, topHeight) = pointerInOpenIsland(),
               model.expanded.mediaStripContains(point, islandWidth: islandWidth, topHeight: topHeight) else { return }
-        let control: IslandExpandedLayout.MediaControl = direction == .left ? .next : .previous
+        let control: IslandExpandedLayout.Control = direction == .left ? .next : .previous
         Logger.app.info("Gesto: \(direction == .left ? "siguiente" : "anterior", privacy: .public) en la música")
         // El botón se hunde un instante, para que se vea qué ha pasado
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
@@ -359,7 +384,7 @@ final class IslandController {
         // se abre con el atajo o el gesto
         guard settings.openOnHover, expansion == .closed, tuckedAt == nil, !currentSpaces.isEmpty, pointerIsOverIsland()
         else { return }
-        cancelTrackPeek()
+        cancelPeek()
         expansion = .peek
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         growWindow()
@@ -379,7 +404,7 @@ final class IslandController {
     }
 
     private func open() {
-        cancelTrackPeek()
+        cancelPeek()
         expansion = .open
         // Los atajos se leen al abrir: así se ven los cambios hechos en Ajustes sin reiniciar la app
         model.shortcutLabels = focuser.labels(for: currentSpaces.map(\.index))
@@ -497,15 +522,16 @@ final class IslandController {
         return model.expanded.spaces[index]
     }
 
-    private func mediaControlUnderPointer() -> IslandExpandedLayout.MediaControl? {
+    // Los botones de la música y el de mantener despierto
+    private func controlUnderPointer() -> IslandExpandedLayout.Control? {
         guard let (point, islandWidth, topHeight) = pointerInOpenIsland() else { return nil }
-        return model.expanded.mediaControl(at: point, islandWidth: islandWidth, topHeight: topHeight)
+        return model.expanded.control(at: point, islandWidth: islandWidth, topHeight: topHeight)
     }
 
-    // Solo se iluminan las tarjetas a las que se puede ir, y los botones de la música
+    // Solo se iluminan las tarjetas a las que se puede ir, y los botones
     private func updateHoveredCard() {
         let hovered = spaceUnderPointer().flatMap { model.canSwitch(to: $0) ? $0.index : nil }
-        let control = mediaControlUnderPointer()
+        let control = controlUnderPointer()
         guard hovered != model.hoveredSpace || control != model.hoveredControl else { return }
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         withAnimation(reduceMotion ? Self.reducedAnimation : Self.cardAnimation) {
@@ -514,11 +540,11 @@ final class IslandController {
         }
     }
 
-    /// Pulsar una tarjeta o un botón de la música lo hunde. Devuelve false si el clic no cae en ninguno, y entonces
+    /// Pulsar una tarjeta o un botón lo hunde. Devuelve false si el clic no cae en ninguno, y entonces
     /// se abre el menú
     private func pressCard() -> Bool {
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        if let control = mediaControlUnderPointer() {
+        if let control = controlUnderPointer() {
             withAnimation(reduceMotion ? Self.reducedAnimation : Self.cardAnimation) {
                 model.hoveredControl = control
                 model.pressedControl = control
@@ -538,7 +564,7 @@ final class IslandController {
     private func releaseCard() {
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         if let pressed = model.pressedControl {
-            let control = mediaControlUnderPointer()
+            let control = controlUnderPointer()
             withAnimation(reduceMotion ? Self.reducedAnimation : Self.cardAnimation) { model.pressedControl = nil }
             if control == pressed { perform(pressed) }
             return
@@ -550,9 +576,10 @@ final class IslandController {
         switchTo(space)
     }
 
-    private func perform(_ control: IslandExpandedLayout.MediaControl) {
-        Logger.app.info("Clic: \(String(describing: control), privacy: .public) en la música")
+    private func perform(_ control: IslandExpandedLayout.Control) {
+        Logger.app.info("Clic: \(String(describing: control), privacy: .public)")
         switch control {
+        case .keepAwake: keepAwake.toggle()
         case .playPause: media.togglePlayPause()
         case .next: media.nextTrack()
         case .previous: media.previousTrack()
@@ -620,7 +647,7 @@ final class IslandController {
                 height: expanded.height + Self.shadowMargin
             )
         case .peek, .closed:
-            let wing = showsTrackPeek ? IslandLayout.trackPeekWingWidth : currentLayout.wingWidth
+            let wing = currentPeek == .track ? IslandLayout.trackPeekWingWidth : currentLayout.wingWidth
             let width = geometry.centerWidth + 2 * wing + 2 * IslandView.closedTopRadius
             guard roomy || expansion == .peek else {
                 return geometry.windowFrame(width: width, height: geometry.notch.height)
@@ -792,17 +819,17 @@ extension IslandController {
     func saveSnapshot(expanded: Bool = false, hoveringCard: Bool = false, trackPeek: Bool = false) {
         let wasExpanded = model.isExpanded
         let wasHovered = model.hoveredSpace
-        let wasPeeking = model.showsTrackPeek
+        let wasPeek = model.peek
         model.isExpanded = expanded || hoveringCard || wasExpanded
         if model.isExpanded { model.shortcutLabels = focuser.labels(for: currentSpaces.map(\.index)) }
         if hoveringCard {
             model.hoveredSpace = currentSpaces.first { !$0.isFocused && model.canSwitch(to: $0) }?.index
         }
-        if trackPeek, model.nowPlaying != nil { model.showsTrackPeek = true }
+        if trackPeek, model.nowPlaying != nil { model.peek = .track }
         defer {
             model.isExpanded = wasExpanded
             model.hoveredSpace = wasHovered
-            model.showsTrackPeek = wasPeeking
+            model.peek = wasPeek
         }
         let size = CGSize(width: model.islandWidth + 2 * Self.shadowMargin, height: model.islandHeight + Self.shadowMargin)
         let content = hosting.rootView

@@ -84,6 +84,16 @@ struct SettingsView: View {
                 Text("Con la isla abierta, la canción, la carátula y los botones; dos dedos de lado sobre ella cambian de canción. Lo lee del «Ahora suena» de macOS: no se envía nada a internet.")
                     .foregroundStyle(.secondary)
             }
+
+            Section {
+                Toggle("Batería y cargador", isOn: $settings.batteryAlerts)
+                Toggle("Botón de mantener despierto", isOn: $settings.keepAwakeButton)
+            } header: {
+                Text("Actividades")
+            } footer: {
+                Text("Avisos al enchufar o desenchufar el cargador y al bajar del 20 % y del 10 %, y un sol en la isla abierta que impide que el Mac se duerma hasta que lo apagues.")
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
         .frame(width: 460)

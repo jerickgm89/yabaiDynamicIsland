@@ -31,8 +31,8 @@ final class IslandModel {
     var artwork: NSImage?
     /// El ícono de la app que suena, junto al título
     var sourceIcon: NSImage?
-    var hoveredControl: IslandExpandedLayout.MediaControl?
-    var pressedControl: IslandExpandedLayout.MediaControl?
+    var hoveredControl: IslandExpandedLayout.Control?
+    var pressedControl: IslandExpandedLayout.Control?
 
     /// Se va a un escritorio desde su tarjeta con su atajo; la del activo solo cierra la isla
     func canSwitch(to space: SpaceSummary) -> Bool {
@@ -42,11 +42,13 @@ final class IslandModel {
     /// Ancho de cada ala tal como se ve ahora; con "Reducir movimiento" las alas no se recogen, solo se funden
     var visibleWingWidth: CGFloat {
         if wingsTucked && !reduceMotion { return 0 }
-        return showsTrackPeek ? IslandLayout.trackPeekWingWidth : layout.wingWidth
+        return peek == .track ? IslandLayout.trackPeekWingWidth : layout.wingWidth
     }
 
-    /// Aviso de canción nueva: unos segundos, las alas enseñan la carátula y el título en vez de los espacios
-    var showsTrackPeek = false
+    /// Aviso de unos segundos en lugar de los espacios: la canción nueva o la batería
+    var peek: IslandPeek?
+    /// Mantener despierto activado: el sol de la isla abierta se enciende
+    var keepAwakeActive = false
 
     var islandWidth: CGFloat {
         if isExpanded { return expanded.bodyWidth + 2 * IslandView.openTopRadius }
@@ -102,6 +104,9 @@ struct IslandView: View {
             }
         }
         .frame(width: model.islandWidth, height: model.islandHeight, alignment: .top)
+        .overlay(alignment: .topLeading) {
+            if model.isExpanded { keepAwakeButton }
+        }
         .background(
             IslandShape(
                 topRadius: model.isExpanded ? Self.openTopRadius : Self.closedTopRadius,
@@ -255,7 +260,7 @@ struct IslandView: View {
         }
     }
 
-    private func control(_ control: IslandExpandedLayout.MediaControl, symbol: String) -> some View {
+    private func control(_ control: IslandExpandedLayout.Control, symbol: String) -> some View {
         let hovered = model.hoveredControl == control
         return Image(systemName: symbol)
             .font(.system(size: control == .playPause ? 16 : 12, weight: .semibold))
@@ -266,7 +271,7 @@ struct IslandView: View {
             .scaleEffect(controlScale(control))
     }
 
-    private func controlScale(_ control: IslandExpandedLayout.MediaControl) -> CGFloat {
+    private func controlScale(_ control: IslandExpandedLayout.Control) -> CGFloat {
         !model.reduceMotion && model.pressedControl == control ? 0.88 : 1
     }
 
@@ -285,12 +290,16 @@ struct IslandView: View {
 
     private var leftWing: some View {
         HStack(spacing: 0) {
-            if model.showsTrackPeek {
+            if model.peek == .track {
                 // Aviso de canción nueva: la carátula y las barras
                 artwork
                     .frame(width: IslandLayout.trackPeekArtworkSize, height: IslandLayout.trackPeekArtworkSize)
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 musicBars.padding(.leading, IslandLayout.musicIndicatorGap)
+            } else if case let .battery(event, level) = model.peek {
+                Image(systemName: Self.batterySymbol(event, level: level))
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Self.batteryColor(event))
             } else if let fallbackText = model.fallbackText {
                 Text(fallbackText)
                     .font(.system(size: 13, weight: .semibold))
@@ -323,7 +332,12 @@ struct IslandView: View {
 
     private var rightWing: some View {
         HStack(spacing: 0) {
-            if model.showsTrackPeek, let nowPlaying = model.nowPlaying {
+            if case let .battery(event, level) = model.peek {
+                Text("\(level) %")
+                    .font(.system(size: 13, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(Self.batteryColor(event))
+            } else if model.peek == .track, let nowPlaying = model.nowPlaying {
                 // Aviso de canción nueva: el título y el artista, recortados al ala
                 VStack(alignment: .trailing, spacing: 1) {
                     Text(nowPlaying.title)
@@ -349,9 +363,9 @@ struct IslandView: View {
                     }
                     .frame(width: model.layout.tokenWidth)
                 }
-                if model.layout.showsMusicIndicator {
-                    musicBars
-                        .frame(width: IslandLayout.musicIndicatorWidth)
+                ForEach(model.layout.statusItems, id: \.self) { item in
+                    statusItem(item)
+                        .frame(width: item.width)
                         .padding(.leading, IslandLayout.musicIndicatorGap)
                         .transition(.opacity)
                 }
@@ -359,6 +373,60 @@ struct IslandView: View {
         }
         .padding(.trailing, IslandLayout.outerPadding)
         .frame(maxWidth: .infinity, alignment: .trailing)
+    }
+
+    // Al final del ala derecha: las barras de la música y el sol de mantener despierto
+    @ViewBuilder private func statusItem(_ item: IslandLayout.StatusItem) -> some View {
+        switch item {
+        case .music: musicBars
+        case .keepAwake:
+            Image(systemName: "sun.max.fill")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.yellow.opacity(0.9))
+        }
+    }
+
+    // MARK: - Actividades
+
+    // El sol de la isla abierta, arriba a la derecha, en la franja del notch. Los clics los resuelve
+    // IslandController con IslandExpandedLayout.control, como los de la música
+    @ViewBuilder private var keepAwakeButton: some View {
+        if let frame = model.expanded.keepAwakeFrame(islandWidth: model.islandWidth, topHeight: model.height) {
+            let hovered = model.hoveredControl == .keepAwake
+            Image(systemName: model.keepAwakeActive ? "sun.max.fill" : "sun.max")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(model.keepAwakeActive ? .yellow : .white.opacity(hovered ? 0.9 : 0.55))
+                .frame(width: frame.width, height: frame.height)
+                .background(Circle().fill(.white.opacity(hovered ? 0.14 : 0)))
+                .scaleEffect(!model.reduceMotion && model.pressedControl == .keepAwake ? 0.88 : 1)
+                .offset(x: frame.minX, y: frame.minY)
+                .transition(.opacity)
+        }
+    }
+
+    private static func batterySymbol(_ event: BatteryEvent, level: Int) -> String {
+        switch event {
+        case .pluggedIn: "bolt.fill"
+        case .critical: "battery.0percent"
+        case .low: "battery.25percent"
+        case .unplugged:
+            switch level {
+            case ..<13: "battery.0percent"
+            case ..<38: "battery.25percent"
+            case ..<63: "battery.50percent"
+            case ..<88: "battery.75percent"
+            default: "battery.100percent"
+            }
+        }
+    }
+
+    private static func batteryColor(_ event: BatteryEvent) -> Color {
+        switch event {
+        case .pluggedIn: .green
+        case .unplugged: .white
+        case .low: .orange
+        case .critical: .red
+        }
     }
 
     // Animadas mientras suena; fijas en pausa o con "Reducir movimiento" (ver MusicBars)

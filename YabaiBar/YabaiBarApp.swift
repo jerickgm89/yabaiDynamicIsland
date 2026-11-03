@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var island: IslandController?
     private var settings: AppSettings?
     private var media: NowPlayingStore?
+    private var battery: BatteryMonitor?
     private var toggleKey: GlobalHotKey?
     private var trackpad: TrackpadMonitor?
     private var workspaceObservers: [NSObjectProtocol] = []
@@ -47,9 +48,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let media = NowPlayingStore(adapter: MediaRemoteAdapter(), settings: settings)
         self.media = media
         let island = IslandController(
-            store: store, icons: AppIcons(), menu: menu, focuser: ShortcutFocuser(), settings: settings, media: media
+            store: store, icons: AppIcons(), menu: menu, focuser: ShortcutFocuser(), settings: settings, media: media,
+            keepAwake: KeepAwake()
         )
         self.island = island
+        battery = BatteryMonitor { state in island.batteryChanged(state) }
 
         // Abrir la isla desde cualquier app, sin llevar el puntero: el atajo de los ajustes (⌥I) o 3 o 4 dedos hacia abajo
         observeToggleShortcut()

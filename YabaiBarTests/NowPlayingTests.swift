@@ -101,7 +101,7 @@ struct MediaStripLayoutTests {
         return IslandExpandedLayout(spaces: spaces, minBodyWidth: 400, maxBodyWidth: 2000, topHeight: 38, hasMedia: hasMedia)
     }
 
-    private func control(_ x: CGFloat, _ y: CGFloat = 150, hasMedia: Bool = true) -> IslandExpandedLayout.MediaControl? {
+    private func control(_ x: CGFloat, _ y: CGFloat = 150, hasMedia: Bool = true) -> IslandExpandedLayout.Control? {
         layout(hasMedia: hasMedia).mediaControl(at: CGPoint(x: x, y: y), islandWidth: 618, topHeight: 38)
     }
 
