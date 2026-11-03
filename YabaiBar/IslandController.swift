@@ -14,7 +14,8 @@ final class IslandController {
     static let openAnimation = Animation.spring(response: 0.42, dampingFraction: 1.0)
     static let closeAnimation = Animation.spring(response: 0.45, dampingFraction: 1.0)
     static let reducedAnimation = Animation.easeInOut(duration: 0.2)
-    // Cambio de escritorio: las alas se recogen y vuelven a salir con un rebote suave, sin prisa
+    // Cambio de escritorio: las alas se recogen y vuelven a salir con un rebote suave, sin prisa. Son los valores
+    // de la velocidad normal; la de los ajustes los acelera o los frena (SwitchSpeed)
     static let tuckAnimation = Animation.smooth(duration: 0.3)
     static let untuckAnimation = Animation.spring(response: 0.6, dampingFraction: 0.8)
     /// Tiempo mínimo recogidas, para que se vea el gesto aunque yabai responda enseguida
@@ -48,6 +49,7 @@ final class IslandController {
     private let store: SpacesStore
     private let icons: AppIcons
     private let focuser: ShortcutFocuser
+    private let settings: AppSettings
     private var geometry: NotchGeometry?
     private var screenWidth: CGFloat = 0
     // Copias de lo dibujado. No se leen del modelo dentro de render(): withObservationTracking
@@ -65,13 +67,15 @@ final class IslandController {
     /// Mientras está abierta con toggle(), Esc y los clics en otras apps la cierran
     private var escapeKey: GlobalHotKey?
     private var clickMonitor: Any?
+    private var autoHideTask: Task<Void, Never>?
     private var screenObserver: NSObjectProtocol?
     private var occlusionObserver: NSObjectProtocol?
 
-    init(store: SpacesStore, icons: AppIcons, menu: AppMenu, focuser: ShortcutFocuser) {
+    init(store: SpacesStore, icons: AppIcons, menu: AppMenu, focuser: ShortcutFocuser, settings: AppSettings) {
         self.store = store
         self.icons = icons
         self.focuser = focuser
+        self.settings = settings
         hosting = IslandHostingView(rootView: IslandView(model: model))
         // Que la vista no cambie el tamaño de la ventana: el marco lo decide NotchGeometry
         hosting.sizingOptions = []
@@ -159,7 +163,8 @@ final class IslandController {
             var transaction = Transaction()
             transaction.disablesAnimations = true
             withTransaction(transaction, update)
-            scheduleUntuck(after: max(.zero, Self.minimumTuck - (ContinuousClock.now - tuckedAt)))
+            let minimumTuck = settings.switchSpeed.scaled(Self.minimumTuck)
+            scheduleUntuck(after: max(.zero, minimumTuck - (ContinuousClock.now - tuckedAt)))
         } else {
             withAnimation(reduceMotion ? Self.reducedAnimation : Self.changeAnimation, update)
         }
@@ -201,7 +206,8 @@ final class IslandController {
         tuckedAt = .now
         untuckTask?.cancel()
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        withAnimation(reduceMotion ? Self.reducedAnimation : Self.tuckAnimation) { model.wingsTucked = true }
+        let animation = reduceMotion ? Self.reducedAnimation : settings.switchSpeed.animation(Self.tuckAnimation)
+        withAnimation(animation) { model.wingsTucked = true }
     }
 
     private func scheduleUntuck(after delay: Duration) {
@@ -218,7 +224,8 @@ final class IslandController {
         // Recogida, la isla mide lo que el notch y es negra como él: encenderla de golpe no se nota
         panel.alphaValue = 1
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        withAnimation(reduceMotion ? Self.reducedAnimation : Self.untuckAnimation) { model.wingsTucked = false }
+        let animation = reduceMotion ? Self.reducedAnimation : settings.switchSpeed.animation(Self.untuckAnimation)
+        withAnimation(animation) { model.wingsTucked = false }
         settleWindow()
     }
 
@@ -306,8 +313,9 @@ final class IslandController {
 
     // MARK: - Abrir a petición
 
-    /// ⌥I o 3 o 4 dedos hacia abajo en cualquier app: abre la isla aunque el puntero no esté encima, o la cierra
-    /// si ya está abierta. Abierta así, espera al puntero y se cierra con Esc o con un clic en otra app
+    /// El atajo o 3 o 4 dedos hacia abajo en cualquier app: abre la isla aunque el puntero no esté encima, o la
+    /// cierra si ya está abierta. Abierta así, espera al puntero y se cierra con Esc, con un clic en otra app o,
+    /// si los ajustes lo piden, sola al cabo de unos segundos
     func toggle() {
         if expansion == .open { return close() }
         // Mientras cambia el escritorio no se abre, igual que con el hover
@@ -323,6 +331,17 @@ final class IslandController {
             MainActor.assumeIsolated { self?.close() }
         }
         watchPointer()
+        if settings.autoHide { scheduleAutoHide(after: .seconds(settings.autoHideDelay)) }
+    }
+
+    // Solo si el puntero no ha llegado a la isla: si está encima, quizá vaya a pulsar una tarjeta
+    private func scheduleAutoHide(after delay: Duration) {
+        autoHideTask = Task {
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled, waitingForPointer else { return }
+            Logger.app.info("Isla: se oculta sola")
+            close()
+        }
     }
 
     private func releaseHold() {
@@ -330,6 +349,8 @@ final class IslandController {
         escapeKey = nil
         if let clickMonitor { NSEvent.removeMonitor(clickMonitor) }
         clickMonitor = nil
+        autoHideTask?.cancel()
+        autoHideTask = nil
     }
 
     // La isla visible, no la ventana (que mide más por la sombra). El píxel superior de la pantalla cuenta como dentro

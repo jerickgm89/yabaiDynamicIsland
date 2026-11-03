@@ -7,10 +7,12 @@ final class AppMenu: NSObject, NSMenuDelegate {
     let menu = NSMenu()
     private let store: SpacesStore
     private let launchAtLogin: LaunchAtLogin
+    private let settingsWindow: SettingsWindow
 
-    init(store: SpacesStore, launchAtLogin: LaunchAtLogin) {
+    init(store: SpacesStore, launchAtLogin: LaunchAtLogin, settingsWindow: SettingsWindow) {
         self.store = store
         self.launchAtLogin = launchAtLogin
+        self.settingsWindow = settingsWindow
         super.init()
         menu.delegate = self
     }
@@ -37,6 +39,10 @@ final class AppMenu: NSObject, NSMenuDelegate {
         login.state = available && launchAtLogin.isEnabled ? .on : .off
         menu.addItem(login)
 
+        let settings = NSMenuItem(title: "Ajustes…", action: #selector(openSettings), keyEquivalent: ",")
+        settings.target = self
+        menu.addItem(settings)
+
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Salir", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
     }
@@ -47,6 +53,10 @@ final class AppMenu: NSObject, NSMenuDelegate {
 
     @objc private func toggleLaunchAtLogin() {
         launchAtLogin.toggle()
+    }
+
+    @objc private func openSettings() {
+        settingsWindow.show()
     }
 }
 

@@ -32,15 +32,21 @@ La isla vive por encima de la barra de menús, nace del notch como la Dynamic Is
 - Al entrar el puntero, la isla crece un poco y el trackpad vibra.
 - Si el puntero se queda encima, la isla se abre hacia abajo y muestra una tarjeta por espacio, con su número, sus apps y su atajo de teclado.
 - Al pasar sobre una tarjeta, esta se ilumina; al hacer clic, macOS cambia a ese escritorio con su animación nativa.
-- El clic derecho, o cualquier clic fuera de las tarjetas, abre el menú: el error de yabai si lo hay, Refrescar, Iniciar al arrancar y Salir.
+- El clic derecho, o cualquier clic fuera de las tarjetas, abre el menú: el error de yabai si lo hay, Refrescar, Iniciar al arrancar, Ajustes… y Salir.
 
 **Abierta desde cualquier app**
 
-- Desliza 3 o 4 dedos hacia abajo en el trackpad, o pulsa ⌥I, y la isla se abre al momento, aunque el puntero esté lejos. El mismo gesto, o ⌥I, la cierra.
-- Abierta así, también se cierra con Esc o con un clic en otra app. Si llevas el puntero a la isla, desde ahí se comporta como con el hover.
+- Desliza 3 o 4 dedos hacia abajo en el trackpad, o pulsa el atajo (⌥I por defecto), y la isla se abre al momento, aunque el puntero esté lejos. El mismo gesto, o el atajo, la cierra.
+- Abierta así, se oculta sola a los 3 s si no llevas el puntero hasta ella, y también se cierra con Esc o con un clic en otra app. Si llevas el puntero a la isla, desde ahí se comporta como con el hover.
 - Hacia arriba y a los lados no se usan, porque son de Mission Control y del cambio de escritorio. Si activas App Exposé o "Arrastrar con tres dedos", chocarán con el gesto.
-- El gesto se lee con MultitouchSupport, un framework privado de Apple, porque macOS no ofrece una API pública para gestos de 3 o 4 dedos. Una actualización de macOS podría romperlo; ⌥I seguiría funcionando.
-- Mientras YabaiBar está abierta, ⌥I ya no escribe el circunflejo (ˆ).
+- El gesto se lee con MultitouchSupport, un framework privado de Apple, porque macOS no ofrece una API pública para gestos de 3 o 4 dedos. Una actualización de macOS podría romperlo; el atajo seguiría funcionando.
+- Mientras YabaiBar está abierta, la combinación del atajo ya no llega a las demás apps. Con ⌥I, por ejemplo, ya no se escribe el circunflejo (ˆ).
+
+**Ajustes (en el menú, ⌘,)**
+
+- **Velocidad de las alas** al cambiar de escritorio: Lenta, Normal, Rápida o Sin animación. El deslizamiento del escritorio es el de macOS y no cambia.
+- **Atajo** para abrir la isla: pulsa el botón y luego la combinación nueva. Esc cancela, ⌫ lo quita y "Restablecer" vuelve a ⌥I. Una letra necesita ⌘, ⌥ o ⌃.
+- **Ocultar sola** cuando se abre con el atajo o el gesto, y al cabo de cuántos segundos (de 1 a 10).
 
 **Casos especiales**
 
@@ -143,6 +149,7 @@ En la build Debug, la URL `yabaibar://snapshot` (o `yabaibar://snapshot?abierta`
   - `NotchGeometry` e `IslandLayout` calculan la geometría.
   - `IslandView` dibuja la isla e `IslandController` la coloca y la anima.
   - `TrackpadMonitor` (con `FingerSwipeDetector`) y `GlobalHotKey` la abren desde cualquier app.
+  - `AppSettings` guarda los ajustes y `SettingsWindow` los muestra.
 - `YabaiBarTests/`: tests con Swift Testing y fixtures JSON reales de yabai. Se ejecutan dentro de la app, que también consulta el yabai real.
 - `assets/`: las capturas de este README.
 

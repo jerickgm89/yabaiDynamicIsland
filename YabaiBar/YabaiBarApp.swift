@@ -1,4 +1,3 @@
-import Carbon.HIToolbox
 import SwiftUI
 import notify
 import os
@@ -15,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var store: SpacesStore?
     private var menu: AppMenu?
     private var island: IslandController?
+    private var settings: AppSettings?
     private var toggleKey: GlobalHotKey?
     private var trackpad: TrackpadMonitor?
     private var workspaceObservers: [NSObjectProtocol] = []
@@ -39,17 +39,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let yabai = YabaiClient()
         let store = SpacesStore(yabai: yabai)
         self.store = store
-        let menu = AppMenu(store: store, launchAtLogin: LaunchAtLogin())
+        let settings = AppSettings()
+        self.settings = settings
+        let menu = AppMenu(store: store, launchAtLogin: LaunchAtLogin(), settingsWindow: SettingsWindow(settings: settings))
         self.menu = menu
-        let island = IslandController(store: store, icons: AppIcons(), menu: menu, focuser: ShortcutFocuser())
+        let island = IslandController(
+            store: store, icons: AppIcons(), menu: menu, focuser: ShortcutFocuser(), settings: settings
+        )
         self.island = island
 
-        // Abrir la isla desde cualquier app, sin llevar el puntero: ⌥I o 3 o 4 dedos hacia abajo
-        toggleKey = GlobalHotKey(keyCode: kVK_ANSI_I, modifiers: optionKey) {
-            Logger.app.info("Atajo: ⌥I")
-            island.toggle()
-        }
-        if toggleKey == nil { Logger.app.error("No se pudo registrar el atajo ⌥I: ¿lo usa otra app?") }
+        // Abrir la isla desde cualquier app, sin llevar el puntero: el atajo de los ajustes (⌥I) o 3 o 4 dedos hacia abajo
+        observeToggleShortcut()
         trackpad = TrackpadMonitor {
             Logger.app.info("Gesto: 3 o 4 dedos hacia abajo")
             island.toggle()
@@ -75,6 +75,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         store.requestRefresh()
+    }
+
+    // Registra el atajo de los ajustes y lo vuelve a registrar cada vez que cambia. Mientras se graba uno nuevo,
+    // ninguno: Carbon se quedaría la tecla antes que la ventana de ajustes
+    private func observeToggleShortcut() {
+        guard let settings else { return }
+        withObservationTracking {
+            // Primero se suelta el anterior: registrar dos veces la misma combinación falla
+            toggleKey = nil
+            var error: String?
+            if let shortcut = settings.toggleShortcut, !settings.isRecordingShortcut {
+                toggleKey = GlobalHotKey(shortcut: shortcut) { [weak self] in
+                    Logger.app.info("Atajo: \(shortcut.label, privacy: .public)")
+                    self?.island?.toggle()
+                }
+                if toggleKey == nil {
+                    Logger.app.error("No se pudo registrar el atajo \(shortcut.label, privacy: .public)")
+                    error = "No se pudo usar \(shortcut.label): quizá lo tiene otra app"
+                }
+            }
+            settings.shortcutError = error
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.observeToggleShortcut() }
+        }
     }
 
     // yabaibar://refresh sigue funcionando para usarlo a mano; yabaibar://snapshot solo en DEBUG
