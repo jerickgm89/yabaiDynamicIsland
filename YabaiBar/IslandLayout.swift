@@ -1,0 +1,51 @@
+import Foundation
+
+// Geometría pura de las alas: el espacio activo va a la izquierda del notch y los inactivos a la derecha.
+// Las dos alas miden lo mismo (lo que necesite la más ancha), dentro de un mínimo y un máximo.
+struct IslandLayout: Equatable {
+    static let minWingWidth: CGFloat = 70
+    static let maxWingWidth: CGFloat = 150
+    /// Del borde exterior del ala a su contenido
+    static let outerPadding: CGFloat = 12
+    /// Del contenido al notch
+    static let innerPadding: CGFloat = 8
+    static let numberWidth: CGFloat = 20
+    static let numberGap: CGFloat = 6
+    static let iconSize: CGFloat = 20
+    static let iconGap: CGFloat = 4
+    static let maxIcons = 3
+    static let overflowWidth: CGFloat = 22
+    static let tokenWidth: CGFloat = 22
+    static let minTokenWidth: CGFloat = 14
+
+    let active: SpaceSummary?
+    let inactive: [SpaceSummary]
+    let wingWidth: CGFloat
+    /// Ancho de cada espacio inactivo; se estrecha si hay tantos que no caben en el ala máxima
+    let tokenWidth: CGFloat
+
+    var shownApps: ArraySlice<SpaceApp> { active?.apps.prefix(Self.maxIcons) ?? [] }
+    var overflow: Int { max(0, (active?.apps.count ?? 0) - Self.maxIcons) }
+
+    init(spaces: [SpaceSummary]) {
+        active = spaces.first(where: \.isFocused)
+        inactive = spaces.filter { !$0.isFocused }
+
+        let left = Self.leftWidth(appCount: active?.apps.count ?? 0)
+        let right = Self.innerPadding + CGFloat(inactive.count) * Self.tokenWidth + Self.outerPadding
+        wingWidth = min(max(left, right, Self.minWingWidth), Self.maxWingWidth)
+
+        let available = wingWidth - Self.innerPadding - Self.outerPadding
+        tokenWidth = inactive.isEmpty
+            ? Self.tokenWidth
+            : max(Self.minTokenWidth, min(Self.tokenWidth, available / CGFloat(inactive.count)))
+    }
+
+    // Número + íconos visibles (+ "+n" si sobran) con sus márgenes
+    static func leftWidth(appCount: Int) -> CGFloat {
+        let shown = CGFloat(min(appCount, maxIcons))
+        let icons = shown > 0 ? numberGap + shown * iconSize + (shown - 1) * iconGap : 0
+        let overflow = appCount > maxIcons ? iconGap + overflowWidth : 0
+        return outerPadding + numberWidth + icons + overflow + innerPadding
+    }
+}

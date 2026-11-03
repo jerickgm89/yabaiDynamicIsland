@@ -85,15 +85,15 @@ struct SpacesStoreTests {
     }
 }
 
-struct StatusBarTitleTests {
+struct IslandTitleTests {
     @Test func marksTheFocusedSpaceWithBrackets() {
         let spaces = [1, 2, 3, 4].map { SpaceSummary(index: $0, isFocused: $0 == 3, apps: []) }
-        #expect(StatusBarController.title(for: spaces, failed: false) == "1 2 [3] 4")
+        #expect(IslandController.title(for: spaces, failed: false) == "1 2 [3] 4")
     }
 
     @Test func isNeverEmpty() {
-        #expect(StatusBarController.title(for: [], failed: false) == "YB")
-        #expect(StatusBarController.title(for: [], failed: true) == "YB ⚠︎")
+        #expect(IslandController.title(for: [], failed: false) == "YB")
+        #expect(IslandController.title(for: [], failed: true) == "YB ⚠︎")
     }
 }
 
