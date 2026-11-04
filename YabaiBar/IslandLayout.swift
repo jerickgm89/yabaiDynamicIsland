@@ -4,17 +4,20 @@ import Foundation
 // indicadores al final (la música y mantener despierto). Las dos alas miden lo mismo (lo que necesite la más
 // ancha), dentro de un mínimo y un máximo.
 struct IslandLayout: Equatable {
-    /// Lo que va al final del ala derecha, siempre en este orden
+    /// Lo que va al final del ala derecha, siempre en este orden: el anillo del Pomodoro, al borde
     enum StatusItem: Hashable, CaseIterable {
-        case music, keepAwake
+        case music, keepAwake, pomodoro
 
         var width: CGFloat {
             switch self {
             case .music: IslandLayout.musicIndicatorWidth
             case .keepAwake: 12
+            case .pomodoro: IslandLayout.pomodoroRingSize
             }
         }
     }
+
+    static let pomodoroRingSize: CGFloat = 12
 
     static let minWingWidth: CGFloat = 70
     static let maxWingWidth: CGFloat = 150

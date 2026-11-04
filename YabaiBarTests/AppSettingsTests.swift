@@ -33,6 +33,7 @@ struct AppSettingsTests {
             #expect(!settings.pomodoroAutoStartFocus)
             #expect(settings.pomodoroWarning == 30)
             #expect(settings.pomodoroDailyGoal == 8)
+            #expect(settings.showPomodoroRing)
         }
     }
 

@@ -4,6 +4,14 @@ enum PomodoroPhase: String, Codable, Sendable {
     case focus, shortBreak, longBreak
 
     var isBreak: Bool { self != .focus }
+
+    var title: String {
+        switch self {
+        case .focus: "Foco"
+        case .shortBreak: "Descanso"
+        case .longBreak: "Descanso largo"
+        }
+    }
 }
 
 /// Lo que dura cada fase y cada cuántos focos toca el descanso largo
@@ -61,6 +69,43 @@ enum PomodoroPreset: String, CaseIterable, Identifiable {
             guard let minutes = preset.minutes else { return false }
             return minutes == (focus, shortBreak, longBreak, rounds)
         } ?? .custom
+    }
+}
+
+/// El aviso del Pomodoro en la isla cerrada: la fase que empieza (o que espera a que la empieces) o lo que queda
+struct PomodoroPeek: Equatable, Sendable {
+    enum Kind: Equatable, Sendable {
+        case started(minutes: Int)
+        case ready
+        case warning(seconds: Int)
+    }
+
+    var phase: PomodoroPhase
+    var kind: Kind
+
+    var title: String {
+        if case .warning(let seconds) = kind { return "Quedan \(seconds) s" }
+        return phase.title
+    }
+
+    var subtitle: String {
+        switch kind {
+        case .started(let minutes): "\(minutes) min"
+        case .ready: "Listo para empezar"
+        case .warning: phase.isBreak ? "del descanso" : "del foco"
+        }
+    }
+
+    /// El aviso de un evento del temporizador, con el temporizador ya avanzado
+    static func make(for event: PomodoroEvent, timer: PomodoroTimer, rules: PomodoroRules) -> PomodoroPeek {
+        switch event {
+        case .warning(let phase):
+            return PomodoroPeek(phase: phase, kind: .warning(seconds: Int(rules.warning ?? 0)))
+        case .finished(_, let next):
+            guard timer.isRunning else { return PomodoroPeek(phase: next, kind: .ready) }
+            let minutes = max(1, Int((rules.durations.duration(of: next) / 60).rounded()))
+            return PomodoroPeek(phase: next, kind: .started(minutes: minutes))
+        }
     }
 }
 

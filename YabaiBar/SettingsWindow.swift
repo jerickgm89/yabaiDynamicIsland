@@ -117,8 +117,10 @@ struct SettingsView: View {
         Form {
             Section {
                 Toggle("Mostrar el Pomodoro", isOn: $settings.showPomodoro)
+                Toggle("Anillo en la isla cerrada", isOn: $settings.showPomodoroRing)
+                    .disabled(!settings.showPomodoro)
             } footer: {
-                Text("Un temporizador en la esquina izquierda de la isla abierta y, mientras corre, una franja con la cuenta atrás y los botones. Apagarlo termina la sesión.")
+                Text("Un temporizador en la esquina izquierda de la isla abierta y, mientras corre, una franja con la cuenta atrás y los botones. En la isla cerrada, un anillo de progreso y un aviso al cambiar de fase. Apagarlo termina la sesión.")
                     .foregroundStyle(.secondary)
             }
 

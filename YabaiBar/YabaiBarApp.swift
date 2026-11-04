@@ -63,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         self.island = island
         battery = BatteryMonitor { state in island.batteryChanged(state) }
+        pomodoro.onEvent = { event in island.pomodoroEvent(event) }
 
         // Abrir la isla desde cualquier app, sin llevar el puntero: el atajo de los ajustes (⌥I) o 3 o 4 dedos hacia abajo
         observeToggleShortcut()
@@ -146,9 +147,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 store?.requestRefresh()
             #if DEBUG
             case "snapshot":
-                island?.saveSnapshot(
-                    expanded: url.query() == "abierta", hoveringCard: url.query() == "hover", trackPeek: url.query() == "aviso"
-                )
+                let peek: IslandPeek? = switch url.query() {
+                case "aviso": .track
+                case "aviso-pomodoro": .pomodoro(PomodoroPeek(phase: .shortBreak, kind: .started(minutes: 5)))
+                default: nil
+                }
+                island?.saveSnapshot(expanded: url.query() == "abierta", hoveringCard: url.query() == "hover", peek: peek)
             case "stress":
                 island?.stressTest()
             case "pomodoro-demo":

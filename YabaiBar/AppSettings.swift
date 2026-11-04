@@ -116,6 +116,11 @@ final class AppSettings {
         didSet { defaults.set(pomodoroDailyGoal, forKey: Key.pomodoroDailyGoal) }
     }
 
+    /// El anillo de progreso al final del ala derecha de la isla cerrada, mientras hay sesión
+    var showPomodoroRing: Bool {
+        didSet { defaults.set(showPomodoroRing, forKey: Key.showPomodoroRing) }
+    }
+
     /// El preset que corresponde a los tiempos; elegir uno cambia los cuatro tiempos de golpe
     var pomodoroPreset: PomodoroPreset {
         get {
@@ -168,6 +173,7 @@ final class AppSettings {
         static let pomodoroAutoStartFocus = "pomodoroAutoStartFocus"
         static let pomodoroWarning = "pomodoroWarning"
         static let pomodoroDailyGoal = "pomodoroDailyGoal"
+        static let showPomodoroRing = "showPomodoroRing"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -206,6 +212,7 @@ final class AppSettings {
         let warning = defaults.object(forKey: Key.pomodoroWarning) as? Int ?? 30
         pomodoroWarning = Self.pomodoroWarnings.contains(warning) ? warning : 30
         pomodoroDailyGoal = int(Key.pomodoroDailyGoal, Self.dailyGoals, 8)
+        showPomodoroRing = defaults.object(forKey: Key.showPomodoroRing) as? Bool ?? true
     }
 }
 

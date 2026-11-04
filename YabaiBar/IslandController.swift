@@ -209,6 +209,7 @@ final class IslandController {
         var items: [IslandLayout.StatusItem] = []
         if currentHasMedia && settings.showMusicBars { items.append(.music) }
         if keepAwake.isActive { items.append(.keepAwake) }
+        if currentHasPomodoro && settings.showPomodoroRing { items.append(.pomodoro) }
         return items
     }
 
@@ -357,9 +358,16 @@ final class IslandController {
         schedulePeek(.battery(event, level: state.level))
     }
 
-    // La canción nueva o la batería: la isla cerrada lo enseña unos segundos en lugar de los espacios. Un aviso nuevo
-    // sustituye al que se esté viendo
+    /// Aviso de PomodoroStore: el cambio de fase o lo que queda, en la isla cerrada
+    func pomodoroEvent(_ event: PomodoroEvent) {
+        guard settings.showPomodoro else { return }
+        schedulePeek(.pomodoro(PomodoroPeek.make(for: event, timer: pomodoro.timer, rules: pomodoro.rules)))
+    }
+
+    // La canción nueva, la batería o el Pomodoro: la isla cerrada lo enseña unos segundos en lugar de los espacios.
+    // Un aviso nuevo sustituye al que se esté viendo, salvo que sea menos importante
     private func schedulePeek(_ peek: IslandPeek, after delay: Duration = .zero) {
+        if let currentPeek, currentPeek.priority > peek.priority { return }
         peekTask?.cancel()
         peekTask = Task {
             try? await Task.sleep(for: delay)
@@ -386,7 +394,7 @@ final class IslandController {
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         withAnimation(reduceMotion ? Self.reducedAnimation : Self.changeAnimation) { model.peek = peek }
         settleWindow()
-        if peek == .track { Logger.app.info("Isla: aviso de canción nueva") }
+        if let peek { Logger.app.info("Isla: aviso \(peek.summary, privacy: .public)") }
     }
 
     // MARK: - Gesto de lado sobre la música
@@ -685,7 +693,7 @@ final class IslandController {
                 height: expanded.height + Self.shadowMargin
             )
         case .peek, .closed:
-            let wing = currentPeek == .track ? IslandLayout.trackPeekWingWidth : currentLayout.wingWidth
+            let wing = currentPeek?.widensWings == true ? IslandLayout.trackPeekWingWidth : currentLayout.wingWidth
             let width = geometry.centerWidth + 2 * wing + 2 * IslandView.closedTopRadius
             guard roomy || expansion == .peek else {
                 return geometry.windowFrame(width: width, height: geometry.notch.height)
@@ -852,9 +860,9 @@ extension IslandController {
     /// Guarda la isla como PNG ampliado y sobre un fondo gris, para revisarla sin mirar la pantalla.
     /// Con `expanded`, la dibuja abierta un instante (se restaura enseguida, sin llegar a la pantalla);
     /// con `hoveringCard`, además con el puntero sobre la primera tarjeta inactiva a la que se puede ir.
-    /// Con `trackPeek`, la isla cerrada con el aviso de canción nueva (si suena algo). Las barras de la música son
-    /// capas de Core Animation y ImageRenderer no las dibuja
-    func saveSnapshot(expanded: Bool = false, hoveringCard: Bool = false, trackPeek: Bool = false) {
+    /// Con `peek`, la isla cerrada con ese aviso (el de canción nueva, solo si suena algo). Las barras de la música
+    /// y el anillo del Pomodoro son capas de Core Animation y ImageRenderer no las dibuja
+    func saveSnapshot(expanded: Bool = false, hoveringCard: Bool = false, peek: IslandPeek? = nil) {
         let wasExpanded = model.isExpanded
         let wasHovered = model.hoveredSpace
         let wasPeek = model.peek
@@ -863,7 +871,7 @@ extension IslandController {
         if hoveringCard {
             model.hoveredSpace = currentSpaces.first { !$0.isFocused && model.canSwitch(to: $0) }?.index
         }
-        if trackPeek, model.nowPlaying != nil { model.peek = .track }
+        if let peek, peek != .track || model.nowPlaying != nil { model.peek = peek }
         defer {
             model.isExpanded = wasExpanded
             model.hoveredSpace = wasHovered

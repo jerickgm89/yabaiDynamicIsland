@@ -57,6 +57,8 @@ Su diseño se inspira en [Atoll](https://github.com/Ebullioscopic/Atoll) (ver [A
 - Un temporizador en la esquina izquierda de la isla abierta: un clic empieza un foco.
 - Mientras corre, una franja entre las tarjetas y la música enseña la fase ("Foco · 2 de 4 · hoy 3/8"), la barra de progreso y la cuenta atrás, con ⏯ (pausar o reanudar), ⏭ (saltar fase) y ⏹ (terminar).
 - Foco y descansos con un descanso largo cada pocos focos, y presets Clásico (25/5/15), Largo (50/10/30) y Corto (15/3/10), o tus propios tiempos.
+- En la isla cerrada, un anillo al final del ala derecha se va llenando con la fase: rojo en el foco, verde en el descanso, gris en pausa.
+- Al cambiar de fase, la isla cerrada avisa 4 s ("Descanso · 5 min"), y antes del final, "Quedan 30 s".
 - Sigue funcionando aunque el Mac duerma o reinicies YabaiBar. También se maneja desde el menú.
 
 **Abierta desde cualquier app**
@@ -178,6 +180,7 @@ Haz clic en la isla y elige "Ajustes…". La ventana tiene tres pestañas, Gener
 | Batería y cargador | Los avisos al enchufar o desenchufar el cargador y con poca batería | Activado |
 | Botón de mantener despierto | El sol de la isla abierta. Al apagarlo, el Mac deja de mantenerse despierto | Activado |
 | Mostrar el Pomodoro | El temporizador y su franja en la isla abierta. Al apagarlo se termina la sesión | Activado |
+| Anillo en la isla cerrada | El anillo de progreso al final del ala derecha mientras hay sesión | Activado |
 | Preset y tiempos | Foco (5–90 min), descanso corto (1–30), descanso largo (5–60) y cada cuántos focos toca el largo (2–8) | Clásico: 25/5/15, cada 4 |
 | Empezar solos | Si los descansos y el foco empiezan solos al terminar la fase anterior | Descansos sí, foco no |
 | Avisar antes de terminar | Segundos antes del final de cada fase: no, 10, 15, 30 o 60 | 30 s |
@@ -198,7 +201,7 @@ xcodebuild -project YabaiBar.xcodeproj -scheme YabaiBar -destination 'platform=m
 notifyutil -p com.jerickdev.yabaibar.refresh
 ```
 
-En la build Debug, la URL `yabaibar://snapshot` (o `yabaibar://snapshot?abierta`, o `?aviso` para el aviso de canción nueva) guarda una imagen de la isla en `~/Library/Caches/com.jerickdev.yabaibar/bar.png`.
+En la build Debug, la URL `yabaibar://snapshot` (o `yabaibar://snapshot?abierta`, `?aviso` para el aviso de canción nueva o `?aviso-pomodoro`) guarda una imagen de la isla en `~/Library/Caches/com.jerickdev.yabaibar/bar.png`.
 
 **Estructura**
 

@@ -42,7 +42,7 @@ final class IslandModel {
     /// Ancho de cada ala tal como se ve ahora; con "Reducir movimiento" las alas no se recogen, solo se funden
     var visibleWingWidth: CGFloat {
         if wingsTucked && !reduceMotion { return 0 }
-        return peek == .track ? IslandLayout.trackPeekWingWidth : layout.wingWidth
+        return peek?.widensWings == true ? IslandLayout.trackPeekWingWidth : layout.wingWidth
     }
 
     /// Aviso de unos segundos en lugar de los espacios: la canción nueva o la batería
@@ -313,6 +313,11 @@ struct IslandView: View {
                 Image(systemName: Self.batterySymbol(event, level: level))
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Self.batteryColor(event))
+            } else if case let .pomodoro(peek) = model.peek {
+                // Aviso del Pomodoro: el símbolo de la fase, en su color
+                Image(systemName: peek.phase.isBreak ? "leaf.fill" : "target")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Self.phaseColor(peek.phase))
             } else if let fallbackText = model.fallbackText {
                 Text(fallbackText)
                     .font(.system(size: 13, weight: .semibold))
@@ -350,21 +355,11 @@ struct IslandView: View {
                     .font(.system(size: 13, weight: .semibold))
                     .monospacedDigit()
                     .foregroundStyle(Self.batteryColor(event))
+            } else if case let .pomodoro(peek) = model.peek {
+                peekText(peek.title, peek.subtitle)
             } else if model.peek == .track, let nowPlaying = model.nowPlaying {
-                // Aviso de canción nueva: el título y el artista, recortados al ala
-                VStack(alignment: .trailing, spacing: 1) {
-                    Text(nowPlaying.title)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.white)
-                    Text(nowPlaying.artist)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.6))
-                }
-                .lineLimit(1)
-                .frame(
-                    maxWidth: IslandLayout.trackPeekWingWidth - IslandLayout.innerPadding - IslandLayout.outerPadding,
-                    alignment: .trailing
-                )
+                // Aviso de canción nueva: el título y el artista
+                peekText(nowPlaying.title, nowPlaying.artist)
             } else {
                 ForEach(model.layout.inactive) { space in
                     VStack(spacing: 2) {
@@ -396,7 +391,40 @@ struct IslandView: View {
             Image(systemName: "sun.max.fill")
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.yellow.opacity(0.9))
+        case .pomodoro: pomodoroRing
         }
+    }
+
+    // Del color de la fase mientras corre; gris en pausa o lista. La animación solo se rehace al empezar, pausar o
+    // reanudar (la clave cambia), no en cada redibujo de la isla
+    @ViewBuilder private var pomodoroRing: some View {
+        if let timer = model.pomodoro {
+            let now = Date()
+            PomodoroRing(
+                progress: timer.progress(at: now),
+                remaining: timer.isRunning ? timer.remaining(at: now) : nil,
+                color: timer.isRunning ? NSColor(Self.phaseColor(timer.phase)) : NSColor.white.withAlphaComponent(0.35),
+                key: "\(timer.phase.rawValue) \(timer.state)"
+            )
+            .frame(width: IslandLayout.pomodoroRingSize, height: IslandLayout.pomodoroRingSize)
+        }
+    }
+
+    // El título y el subtítulo de un aviso, recortados al ala
+    private func peekText(_ title: String, _ subtitle: String) -> some View {
+        VStack(alignment: .trailing, spacing: 1) {
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white)
+            Text(subtitle)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.white.opacity(0.6))
+        }
+        .lineLimit(1)
+        .frame(
+            maxWidth: IslandLayout.trackPeekWingWidth - IslandLayout.innerPadding - IslandLayout.outerPadding,
+            alignment: .trailing
+        )
     }
 
     // MARK: - Actividades
@@ -480,13 +508,8 @@ struct IslandView: View {
 
     // "Foco · 2 de 4 · hoy 3/8", con "en pausa" o "lista para empezar" si toca
     private func pomodoroTitle(_ timer: PomodoroTimer, at date: Date) -> String {
-        let name = switch timer.phase {
-        case .focus: "Foco"
-        case .shortBreak: "Descanso"
-        case .longBreak: "Descanso largo"
-        }
         let round = timer.phase == .focus ? timer.completedInRound + 1 : timer.completedInRound
-        var parts = [name, "\(round) de \(model.pomodoroRounds)", "hoy \(timer.completed(on: date))/\(model.pomodoroGoal)"]
+        var parts = [timer.phase.title, "\(round) de \(model.pomodoroRounds)", "hoy \(timer.completed(on: date))/\(model.pomodoroGoal)"]
         if case .paused = timer.state { parts.append("en pausa") }
         if timer.state == .ready { parts.append("lista") }
         return parts.joined(separator: " · ")

@@ -188,3 +188,45 @@ struct PomodoroLayoutTests {
         #expect(control(46, 19) == .pomodoroToggle)
     }
 }
+
+struct PomodoroPeekTests {
+    @Test func aStartedBreakSaysHowLongItLasts() {
+        let (timer, events) = advanced(started(), to: 100)
+        let peek = PomodoroPeek.make(for: events[0], timer: timer, rules: rules)
+        #expect(peek == PomodoroPeek(phase: .shortBreak, kind: .started(minutes: 1)))
+        #expect(peek.title == "Descanso")
+        #expect(peek.subtitle == "1 min")
+    }
+
+    // El foco no empieza solo: el aviso dice que espera
+    @Test func aReadyFocusWaitsForYou() {
+        let (afterFocus, _) = advanced(started(), to: 100)
+        let (timer, events) = advanced(afterFocus, to: 120)
+        let peek = PomodoroPeek.make(for: events[0], timer: timer, rules: rules)
+        #expect(peek == PomodoroPeek(phase: .focus, kind: .ready))
+        #expect(peek.subtitle == "Listo para empezar")
+    }
+
+    @Test func theWarningSaysWhatIsLeft() {
+        let (timer, events) = advanced(started(), to: 70)
+        let peek = PomodoroPeek.make(for: events[0], timer: timer, rules: rules)
+        #expect(peek.title == "Quedan 30 s")
+        #expect(peek.subtitle == "del foco")
+    }
+
+    // El Pomodoro va antes que la batería, y la batería antes que la canción; solo la canción y el Pomodoro
+    // abren las alas
+    @Test func peeksHaveAPriority() {
+        let pomodoro = IslandPeek.pomodoro(PomodoroPeek(phase: .focus, kind: .ready))
+        let battery = IslandPeek.battery(.pluggedIn, level: 80)
+        #expect(pomodoro.priority > battery.priority)
+        #expect(battery.priority > IslandPeek.track.priority)
+        #expect(pomodoro.widensWings && IslandPeek.track.widensWings && !battery.widensWings)
+    }
+
+    @Test func theRingGoesLast() {
+        let spaces = [SpaceSummary(index: 1, isFocused: true, apps: []), SpaceSummary(index: 2, isFocused: false, apps: [])]
+        let layout = IslandLayout(spaces: spaces, statusItems: [.pomodoro, .music, .keepAwake])
+        #expect(layout.statusItems == [.music, .keepAwake, .pomodoro])
+    }
+}
