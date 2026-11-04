@@ -8,13 +8,18 @@ final class AppMenu: NSObject, NSMenuDelegate {
     private let store: SpacesStore
     private let launchAtLogin: LaunchAtLogin
     private let settingsWindow: SettingsWindow
+    private let welcomeWindow: WelcomeWindow
     private let pomodoro: PomodoroStore
     private let settings: AppSettings
 
-    init(store: SpacesStore, launchAtLogin: LaunchAtLogin, settingsWindow: SettingsWindow, pomodoro: PomodoroStore, settings: AppSettings) {
+    init(
+        store: SpacesStore, launchAtLogin: LaunchAtLogin, settingsWindow: SettingsWindow, welcomeWindow: WelcomeWindow,
+        pomodoro: PomodoroStore, settings: AppSettings
+    ) {
         self.store = store
         self.launchAtLogin = launchAtLogin
         self.settingsWindow = settingsWindow
+        self.welcomeWindow = welcomeWindow
         self.pomodoro = pomodoro
         self.settings = settings
         super.init()
@@ -66,6 +71,10 @@ final class AppMenu: NSObject, NSMenuDelegate {
         settings.target = self
         menu.addItem(settings)
 
+        let welcome = NSMenuItem(title: "Primeros pasos…", action: #selector(openWelcome), keyEquivalent: "")
+        welcome.target = self
+        menu.addItem(welcome)
+
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Salir", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
     }
@@ -80,6 +89,10 @@ final class AppMenu: NSObject, NSMenuDelegate {
 
     @objc private func openSettings() {
         settingsWindow.show()
+    }
+
+    @objc private func openWelcome() {
+        welcomeWindow.show()
     }
 
     @objc private func togglePomodoro() {

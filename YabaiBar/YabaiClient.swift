@@ -43,6 +43,22 @@ struct YabaiClient: YabaiQuerying {
         try await query("--windows")
     }
 
+    /// `yabai -m signal …`: lo usa YabaiSignals para añadir y quitar las señales de YabaiBar
+    func signal(_ arguments: [String]) async throws {
+        _ = try await run(["signal"] + arguments)
+    }
+
+    /// Las etiquetas de las señales que tiene yabai ahora (`yabai -m signal --list`)
+    func signalLabels() async throws -> [String] {
+        struct Signal: Decodable { let label: String }
+        let data = try await run(["signal", "--list"])
+        do {
+            return try JSONDecoder().decode([Signal].self, from: data).map(\.label)
+        } catch {
+            throw YabaiError.decoding(String(describing: error))
+        }
+    }
+
     private func query<T: Decodable>(_ domain: String) async throws -> T {
         let data = try await run(["query", domain])
         do {

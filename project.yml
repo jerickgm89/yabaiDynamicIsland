@@ -11,6 +11,8 @@ settings:
     SWIFT_VERSION: "6.0"
     MARKETING_VERSION: "2.11.0"
     CURRENT_PROJECT_VERSION: "1"
+    # Solo Apple Silicon: por ahora YabaiBar es para los MacBook Pro M1 Pro o M1 Max con notch
+    ARCHS: arm64
     CODE_SIGN_IDENTITY: "-"
     CODE_SIGN_STYLE: Manual
     DEVELOPMENT_TEAM: ""

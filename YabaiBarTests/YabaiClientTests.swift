@@ -53,3 +53,50 @@ struct YabaiClientTests {
         #expect(elapsed < .seconds(2))
     }
 }
+
+struct YabaiSignalsTests {
+    @Test func coversTheNineEventsWithTheirLabels() {
+        #expect(YabaiSignals.events.count == 9)
+        #expect(YabaiSignals.addArguments(for: "window_created")
+            == ["--add", "event=window_created", "label=yb_window_created", "action=notifyutil -p com.jerickdev.yabaibar.refresh"])
+        #expect(YabaiSignals.removeArguments(for: "space_destroyed") == ["--remove", "yb_space_destroyed"])
+    }
+
+    @Test func detectsMissingSignals() {
+        let all = YabaiSignals.events.map(YabaiSignals.label(for:))
+        #expect(!YabaiSignals.isMissing(from: all + ["otra"]))
+        #expect(YabaiSignals.isMissing(from: Array(all.dropLast())))
+        #expect(YabaiSignals.isMissing(from: []))
+    }
+
+    @Test func addsAtLaunchAndAfterYabaiComesBack() {
+        // Al arrancar
+        #expect(YabaiSignals.change(enabled: true, failing: false, wasFailing: false, installed: false) == true)
+        // Ya están: nada
+        #expect(YabaiSignals.change(enabled: true, failing: false, wasFailing: false, installed: true) == nil)
+        // yabai falla: no se intenta
+        #expect(YabaiSignals.change(enabled: true, failing: true, wasFailing: false, installed: false) == nil)
+        // yabai vuelve: quizá se reinició y las perdió
+        #expect(YabaiSignals.change(enabled: true, failing: false, wasFailing: true, installed: true) == true)
+    }
+
+    @Test func removesOnlyWhenTurnedOffAndInstalled() {
+        #expect(YabaiSignals.change(enabled: false, failing: false, wasFailing: false, installed: true) == false)
+        #expect(YabaiSignals.change(enabled: false, failing: true, wasFailing: false, installed: true) == false)
+        #expect(YabaiSignals.change(enabled: false, failing: false, wasFailing: false, installed: false) == nil)
+    }
+
+    @Test func readsSignalLabels() async throws {
+        let path = try FakeYabai.make(#"echo '[{"index":0,"label":"yb_window_created","event":"window_created"},{"index":1,"label":"","event":"space_changed"}]'"#)
+        let labels = try await YabaiClient(executablePath: path).signalLabels()
+        #expect(labels == ["yb_window_created", ""])
+    }
+
+    // Llegan a yabai tal cual, con `-m signal` delante
+    @Test func reachYabaiAsArguments() async throws {
+        let log = FileManager.default.temporaryDirectory.appending(path: "yabai-args-\(UUID().uuidString)")
+        let path = try FakeYabai.make("printf '%s|' \"$@\" >> '\(log.path(percentEncoded: false))'")
+        try await YabaiClient(executablePath: path).signal(YabaiSignals.removeArguments(for: "display_added"))
+        #expect(try String(contentsOf: log, encoding: .utf8) == "-m|signal|--remove|yb_display_added|")
+    }
+}

@@ -35,6 +35,16 @@ final class AppSettings {
         didSet { defaults.set(autoHideDelay, forKey: Key.autoHideDelay) }
     }
 
+    /// YabaiBar añade al arrancar las señales de yabai que la refrescan (ver YabaiSignals)
+    var autoYabaiSignals: Bool {
+        didSet { defaults.set(autoYabaiSignals, forKey: Key.autoYabaiSignals) }
+    }
+
+    /// "Primeros pasos" se abre sola solo la primera vez
+    var hasSeenWelcome: Bool {
+        didSet { defaults.set(hasSeenWelcome, forKey: Key.hasSeenWelcome) }
+    }
+
     /// Si no, la isla solo se abre con el atajo o el gesto
     var openOnHover: Bool {
         didSet { defaults.set(openOnHover, forKey: Key.openOnHover) }
@@ -179,6 +189,8 @@ final class AppSettings {
         static let autoHide = "autoHide"
         static let autoHideDelay = "autoHideDelay"
         static let openOnHover = "openOnHover"
+        static let autoYabaiSignals = "autoYabaiSignals"
+        static let hasSeenWelcome = "hasSeenWelcome"
         static let showNowPlaying = "showNowPlaying"
         static let nowPlayingSource = "nowPlayingSource"
         static let showMusicBars = "showMusicBars"
@@ -209,6 +221,8 @@ final class AppSettings {
         let delay = defaults.object(forKey: Key.autoHideDelay) as? Int ?? Self.defaultAutoHideDelay
         autoHideDelay = Self.autoHideDelays.contains(delay) ? delay : Self.defaultAutoHideDelay
         openOnHover = defaults.object(forKey: Key.openOnHover) as? Bool ?? true
+        autoYabaiSignals = defaults.object(forKey: Key.autoYabaiSignals) as? Bool ?? true
+        hasSeenWelcome = defaults.bool(forKey: Key.hasSeenWelcome)
         showNowPlaying = defaults.object(forKey: Key.showNowPlaying) as? Bool ?? true
         nowPlayingSource = defaults.string(forKey: Key.nowPlayingSource).flatMap(NowPlayingSource.init(rawValue:)) ?? .any
         showMusicBars = defaults.object(forKey: Key.showMusicBars) as? Bool ?? true

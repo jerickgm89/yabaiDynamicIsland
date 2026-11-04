@@ -1,5 +1,7 @@
 # YabaiBar
 
+> **English summary.** YabaiBar is a native macOS app that turns the MacBook notch into a Dynamic Island showing your [yabai](https://github.com/asmvik/yabai) spaces with their app icons, what's playing (TIDAL or any Now Playing app), battery alerts and a Pomodoro. Install it with `brew install --cask jerickgm89/tap/yabaibar` or the DMG from [Releases](https://github.com/jerickgm89/yabaiDynamicIsland/releases). It needs yabai installed and running. **For now it only supports the 2021 MacBook Pro with M1 Pro or M1 Max (14" and 16")**, because the notch has a different width on M2 and later; support for other Macs is coming. It isn't notarized: the first time, go to System Settings › Privacy & Security › Open Anyway. The rest of this README is in Spanish.
+
 Una isla alrededor del notch del Mac que muestra los espacios de [yabai](https://github.com/asmvik/yabai), con los íconos de sus apps, y resalta el activo. Es una app nativa de macOS escrita en Swift 6 con SwiftUI y AppKit.
 
 La isla vive por encima de la barra de menús, nace del notch como la Dynamic Island y está en todos los escritorios. Para ver qué apps tienes en cada escritorio, ábrela de tres formas: pasa el puntero por encima, desliza 3 o 4 dedos hacia abajo en el trackpad o pulsa un atajo de teclado (⌥I), desde cualquier app. Desde sus tarjetas saltas a cualquier escritorio y, debajo, ves y controlas la música que suena (TIDAL o cualquier app del "Ahora suena" de macOS). También avisa del cargador y de la batería baja, y puede mantener el Mac despierto. Trae un Pomodoro. Una ventana de ajustes te deja cambiar la velocidad de la animación, el atajo, cuándo se abre y se oculta, qué música muestra, qué actividades y los tiempos del Pomodoro.
@@ -85,43 +87,79 @@ Su diseño se inspira en [Atoll](https://github.com/Ebullioscopic/Atoll) (ver [A
 
 ## Requisitos
 
-- macOS 14 o posterior. La isla está pensada para Macs con notch. En pantallas sin notch usa un notch imaginario de 180 × 32 pt centrado arriba, que todavía no se ha probado a fondo.
-- [yabai](https://github.com/asmvik/yabai) v7 instalado en `/opt/homebrew/bin/yabai` o `/usr/local/bin/yabai`. Solo se usan consultas (`yabai -m query`), así que **no hace falta la scripting addition** ni desactivar SIP.
+- **Un MacBook Pro de 2021 con M1 Pro o M1 Max y notch**, de 14" o de 16" (ver [Compatibilidad y hoja de ruta](#compatibilidad-y-hoja-de-ruta)).
+- macOS 14 o posterior. Probado en macOS 27.
+- [yabai](https://github.com/asmvik/yabai) instalado y en marcha. Instálalo y configúralo leyendo antes [su wiki](https://github.com/asmvik/yabai/wiki):
+
+  ```bash
+  brew install asmvik/formulae/yabai
+  yabai --start-service
+  ```
+
+  YabaiBar solo hace consultas a yabai y añade sus señales, así que **no hace falta la scripting addition** ni desactivar SIP.
 - Para el gesto de 3 o 4 dedos, un trackpad. Se ha probado con el integrado del MacBook Pro; el atajo de teclado funciona sin él.
-- Para compilar: Xcode con Swift 6 y [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
 
 ## Instalación
 
-El proyecto se genera con XcodeGen a partir de `project.yml`; el `.xcodeproj` no se versiona. Para compilar la versión Release, instalarla en `/Applications` y abrirla:
+**Con [Homebrew](https://brew.sh):**
 
 ```bash
-git clone https://github.com/jerickgm89/yabaiDynamicIsland.git
-cd yabaiDynamicIsland
-xcodegen generate
-xcodebuild -project YabaiBar.xcodeproj -scheme YabaiBar -configuration Release -derivedDataPath build build
-ditto build/Build/Products/Release/YabaiBar.app /Applications/YabaiBar.app
-open /Applications/YabaiBar.app
+brew install --cask jerickgm89/tap/yabaibar
 ```
 
-La opción "Iniciar al arrancar" del menú solo está disponible desde `/Applications`.
+Para actualizarla, `brew upgrade --cask yabaibar`. Para quitarla con sus ajustes, `brew uninstall --zap --cask yabaibar`.
 
-Si `xcodebuild` dice que necesita Xcode y no las Command Line Tools, apunta `xcode-select` a Xcode con `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`. Si prefieres trabajar en Xcode, abre `YabaiBar.xcodeproj` después de `xcodegen generate`.
+**Con el DMG:** descarga `YabaiBar-<versión>.dmg` de [Releases](https://github.com/jerickgm89/yabaiDynamicIsland/releases), ábrelo y arrastra YabaiBar a Aplicaciones.
 
-### Firma (opcional, recomendada)
+**La primera vez.** YabaiBar está firmada con un certificado propio y no está notarizada por Apple, así que macOS la bloquea al abrirla:
 
-El permiso de Accesibilidad (ver abajo) queda ligado a la firma de la app. Con la firma ad-hoc, la firma cambia en cada compilación y macOS deja de reconocer el permiso. Para evitarlo, crea un certificado autofirmado:
+1. Ábrela y cierra el aviso.
+2. Ve a Ajustes del Sistema › Privacidad y seguridad y pulsa «Abrir igualmente». El botón aparece durante una hora después del aviso.
+3. Si prefieres la terminal: `xattr -dr com.apple.quarantine /Applications/YabaiBar.app`.
 
-1. Abre Acceso a Llaveros y ve a Asistente de certificados › Crear un certificado.
-2. Llámalo **YabaiBar Dev**, con tipo de identidad "Raíz autofirmada" y tipo de certificado "Firma de código".
-3. Ábrelo y, en Confiar, marca "Firma de código" como "Confiar siempre".
+Solo hay que hacerlo una vez. Las actualizaciones van firmadas con el mismo certificado, así que conservan el permiso de Accesibilidad.
 
-Después añade `CODE_SIGN_IDENTITY="YabaiBar Dev"` al final del comando `xcodebuild`. Sin esa opción, la app se firma ad-hoc.
+**Primeros pasos.** Al abrirse por primera vez, YabaiBar muestra una ventana que comprueba lo que necesita y dice cómo arreglar lo que falte:
+
+- si el Mac está soportado;
+- si yabai está instalado y en marcha;
+- las señales de yabai, que YabaiBar añade sola;
+- los atajos «Ir al escritorio N» de Mission Control y el permiso de Accesibilidad, para cambiar de escritorio con un clic;
+- Iniciar al arrancar.
+
+Vuelve a abrirla con un clic en la isla › «Primeros pasos…».
+
+## Compatibilidad y hoja de ruta
+
+| | Estado |
+| --- | --- |
+| MacBook Pro de 2021 con M1 Pro o M1 Max, 14" y 16" (`MacBookPro18,1` a `18,4`) | Soportado. Probado en el de 16" |
+| MacBook Pro y MacBook Air con M2, M3, M4 o posterior | Aún no: el notch tiene otro ancho y la isla se descoloca |
+| Macs sin notch y monitores externos | Aún no |
+| Macs con Intel | No se publica |
+| macOS 14 a 26 | Sin probar |
+
+En otros Macs, la app se abre igual y «Primeros pasos» avisa de que aún no está soportado. Lo próximo:
+
+- soporte para las demás generaciones con notch, ajustando la isla a cada ancho;
+- Macs sin notch y monitores externos;
+- pruebas en macOS 14 a 26;
+- firma con Developer ID y notarización, para quitar el paso de «Abrir igualmente»;
+- entrar en el Homebrew oficial.
 
 ## Configuración
 
 ### Refresco en tiempo real
 
-La app ya se actualiza sola al cambiar de escritorio y al abrir, cerrar, ocultar o activar apps. Para que también reaccione al crear, cerrar o minimizar ventanas, y a los cambios de espacios y pantallas, añade estas señales a tu `yabairc`:
+La isla se actualiza sola al cambiar de escritorio y al abrir, cerrar, ocultar o activar apps. Para enterarse de lo que solo sabe yabai (crear, cerrar o minimizar ventanas, y los cambios de espacios y pantallas), YabaiBar añade al arrancar unas señales a yabai con `yabai -m signal --add`, sin tocar tu `yabairc`. Si yabai se reinicia, las vuelve a añadir. Se pueden apagar en Ajustes › General › Señales automáticas.
+
+Todas usan la etiqueta `yb_*` y avisan con una notificación Darwin (`notifyutil -p com.jerickdev.yabaibar.refresh`), que llega a la instancia de YabaiBar que esté abierta y, si no hay ninguna, no hace nada. Para verlas:
+
+```bash
+yabai -m signal --list
+```
+
+Si prefieres tenerlas en tu `yabairc`, apaga el ajuste (YabaiBar las quita de yabai), añade esto y reinicia yabai con `yabai --restart-service`:
 
 ```sh
 # >>> YabaiBar >>>
@@ -138,7 +176,7 @@ yabai -m signal --add event=display_changed label=yb_display_changed action="$YB
 # <<< YabaiBar <<<
 ```
 
-El aviso es una notificación Darwin: llega a la instancia de YabaiBar que esté abierta y, si no hay ninguna, no hace nada. Si usas skhd para mover ventanas entre espacios, añade el mismo aviso al final de esos atajos:
+Si usas skhd para mover ventanas entre espacios, puedes añadir el mismo aviso al final de esos atajos, para que la isla se entere al momento:
 
 ```sh
 shift + alt - 1 : yabai -m window --space 1; notifyutil -p com.jerickdev.yabaibar.refresh
@@ -151,7 +189,7 @@ Al pulsar una tarjeta, YabaiBar pulsa por ti el atajo "Ir al escritorio N" de Mi
 1. Activa los atajos en Ajustes del Sistema › Teclado › Atajos de teclado › Mission Control. Las tarjetas de los escritorios sin atajo muestran "Sin atajo".
 2. Da permiso de Accesibilidad a YabaiBar. El primer clic muestra el aviso de macOS; después, actívala en Ajustes del Sistema › Privacidad y seguridad › Accesibilidad.
 
-Si el permiso está marcado pero el clic no cambia de escritorio, la firma de la app cambió: quita YabaiBar de la lista con "−" y vuelve a pulsar una tarjeta para que la pida de nuevo.
+«Primeros pasos» comprueba las dos cosas. Si el permiso está marcado pero el clic no cambia de escritorio, la firma de la app cambió (por ejemplo, porque la compilaste tú): quita YabaiBar de la lista con "−" y vuelve a pulsar una tarjeta para que la pida de nuevo.
 
 ### Abrir la isla desde cualquier app
 
@@ -172,6 +210,7 @@ Haz clic en la isla y elige "Ajustes…". La ventana tiene tres pestañas, Gener
 
 | Ajuste | Qué hace | Por defecto |
 | --- | --- | --- |
+| Señales automáticas | YabaiBar añade a yabai las señales que refrescan la isla (ver [Refresco en tiempo real](#refresco-en-tiempo-real)) | Activado |
 | Velocidad de las alas | Lo que tardan las alas en recogerse y volver a salir al cambiar de escritorio: Lenta, Normal, Rápida o Sin animación | Normal |
 | Al pasar el puntero | Si está apagado, la isla solo se abre con el atajo o el gesto | Activado |
 | Atajo | La combinación que abre y cierra la isla desde cualquier app. Pulsa el botón y luego la combinación nueva; Esc cancela y ⌫ lo quita | ⌥I |
@@ -195,7 +234,41 @@ Haz clic en la isla y elige "Ajustes…". La ventana tiene tres pestañas, Gener
 
 ## Desarrollo
 
-Después de cambiar `project.yml` o de añadir archivos, vuelve a ejecutar `xcodegen generate`.
+### Compilar desde el código
+
+Hace falta Xcode con Swift 6 y [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`). El proyecto se genera a partir de `project.yml`; el `.xcodeproj` no se versiona. Para compilar la versión Release, instalarla en `/Applications` y abrirla:
+
+```bash
+git clone https://github.com/jerickgm89/yabaiDynamicIsland.git
+cd yabaiDynamicIsland
+xcodegen generate
+xcodebuild -project YabaiBar.xcodeproj -scheme YabaiBar -configuration Release -derivedDataPath build build
+ditto build/Build/Products/Release/YabaiBar.app /Applications/YabaiBar.app
+open /Applications/YabaiBar.app
+```
+
+Si `xcodebuild` dice que necesita Xcode y no las Command Line Tools, apunta `xcode-select` a Xcode con `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`. Si prefieres trabajar en Xcode, abre `YabaiBar.xcodeproj` después de `xcodegen generate`. Después de cambiar `project.yml` o de añadir archivos, vuelve a ejecutar `xcodegen generate`.
+
+**Firma (opcional, recomendada).** El permiso de Accesibilidad queda ligado a la firma de la app. Con la firma ad-hoc, la firma cambia en cada compilación y macOS deja de reconocer el permiso. Para evitarlo, crea un certificado autofirmado:
+
+1. Abre Acceso a Llaveros y ve a Asistente de certificados › Crear un certificado.
+2. Llámalo **YabaiBar Dev**, con tipo de identidad "Raíz autofirmada" y tipo de certificado "Firma de código".
+3. Ábrelo y, en Confiar, marca "Firma de código" como "Confiar siempre".
+
+Después añade `CODE_SIGN_IDENTITY="YabaiBar Dev"` al final del comando `xcodebuild`. Sin esa opción, la app se firma ad-hoc. Una copia compilada así tiene otra firma que la de los releases: si cambias de una a otra, tendrás que volver a dar el permiso de Accesibilidad.
+
+### Publicar una versión
+
+`scripts/release.sh` compila la Release firmada, comprueba la firma, que sea solo arm64 y que no lleve lo de DEBUG, hace el DMG, lo sube a GitHub Releases con las notas de `CHANGELOG.md` y actualiza el cask de [jerickgm89/homebrew-tap](https://github.com/jerickgm89/homebrew-tap):
+
+```bash
+scripts/release.sh 3.0.0 --dry-run   # todo menos publicar: el DMG y las notas quedan en build/release
+scripts/release.sh 3.0.0             # pide confirmación antes del commit, el tag, el push y el release
+```
+
+Antes hay que añadir la sección de la versión a `CHANGELOG.md`. Todas las versiones se firman con el certificado autofirmado **YabaiBar Release** (o el de `SIGN_IDENTITY`), creado como el de arriba y válido 10 años. Guarda una copia (`.p12`, con su clave privada) en un sitio seguro: si se pierde o caduca, cada usuario tendrá que volver a aprobar la app y a darle Accesibilidad.
+
+### Tests, logs y refresco
 
 ```bash
 # Tests
@@ -208,7 +281,7 @@ xcodebuild -project YabaiBar.xcodeproj -scheme YabaiBar -destination 'platform=m
 notifyutil -p com.jerickdev.yabaibar.refresh
 ```
 
-En la build Debug, la URL `yabaibar://snapshot` (o `yabaibar://snapshot?abierta`, `?aviso` para el aviso de canción nueva o `?aviso-pomodoro`) guarda una imagen de la isla en `~/Library/Caches/com.jerickdev.yabaibar/bar.png`.
+En la build Debug, la URL `yabaibar://snapshot` (o `yabaibar://snapshot?abierta`, `?aviso` para el aviso de canción nueva o `?aviso-pomodoro`) guarda una imagen de la isla en `~/Library/Caches/com.jerickdev.yabaibar/bar.png`, y `yabaibar://snapshot?bienvenida`, una de «Primeros pasos» en `welcome.png`.
 
 **Estructura**
 
@@ -216,6 +289,8 @@ En la build Debug, la URL `yabaibar://snapshot` (o `yabaibar://snapshot?abierta`
   - `YabaiClient` ejecuta yabai fuera del hilo principal y decodifica el JSON.
   - `SpaceGrouper` agrupa ventanas por espacio.
   - `SpacesStore` publica el estado.
+  - `YabaiSignals` añade y quita las señales de yabai.
+  - `SetupChecklist` decide qué dice cada requisito y `WelcomeWindow` muestra «Primeros pasos».
   - `NotchGeometry` e `IslandLayout` calculan la geometría.
   - `IslandView` dibuja la isla e `IslandController` la coloca y la anima.
   - `TrackpadMonitor` (con `FingerSwipeDetector`) y `GlobalHotKey` la abren desde cualquier app.
@@ -226,6 +301,8 @@ En la build Debug, la URL `yabaibar://snapshot` (o `yabaibar://snapshot?abierta`
   - `CueSynth` sintetiza los sonidos, `VolumeDucker` baja y sube el volumen y `PomodoroCue` decide qué hacer en cada aviso.
 - `Vendor/mediaremote-adapter/`: el código de mediaremote-adapter, sin cambios y con su licencia. Lo compila el target `MediaRemoteAdapter` de `project.yml`.
 - `YabaiBarTests/`: tests con Swift Testing y fixtures JSON reales de yabai. Se ejecutan dentro de la app, que también consulta el yabai real.
+- `scripts/release.sh` y `packaging/`: el script de publicación, la plantilla de las notas y la del cask de Homebrew.
+- `CHANGELOG.md`: los cambios de cada versión.
 - `assets/`: las capturas de este README.
 
 ## Agradecimientos

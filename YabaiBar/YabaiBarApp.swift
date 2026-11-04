@@ -22,6 +22,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var toggleKey: GlobalHotKey?
     private var pomodoroKey: GlobalHotKey?
     private var trackpad: TrackpadMonitor?
+    private var signals: YabaiSignals?
+    private var welcome: WelcomeWindow?
     private var workspaceObservers: [NSObjectProtocol] = []
     private var refreshToken: Int32 = NOTIFY_TOKEN_INVALID
     private var terminationSignal: DispatchSourceSignal?
@@ -29,7 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Las señales de yabai y los atajos de skhd avisan con `notifyutil -p com.jerickdev.yabaibar.refresh`.
     // La notificación llega a la instancia que está corriendo; una URL pasaría por LaunchServices,
     // que con dos copias de la app (la de build/ y la de /Applications) abría la otra
-    static let refreshNotificationName = "com.jerickdev.yabaibar.refresh"
+    nonisolated static let refreshNotificationName = "com.jerickdev.yabaibar.refresh"
 
     // Lo que macOS avisa por sí solo; ventanas y espacios de yabai llegan por la notificación de refresco
     private static let refreshNotifications: [Notification.Name] = [
@@ -49,18 +51,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.settings = settings
         let pomodoro = PomodoroStore(settings: settings)
         self.pomodoro = pomodoro
+        let focuser = ShortcutFocuser()
+        let launchAtLogin = LaunchAtLogin()
+        let welcome = WelcomeWindow(settings: settings, store: store, focuser: focuser, launchAtLogin: launchAtLogin)
+        self.welcome = welcome
         let menu = AppMenu(
-            store: store, launchAtLogin: LaunchAtLogin(), settingsWindow: SettingsWindow(settings: settings),
-            pomodoro: pomodoro, settings: settings
+            store: store, launchAtLogin: launchAtLogin, settingsWindow: SettingsWindow(settings: settings),
+            welcomeWindow: welcome, pomodoro: pomodoro, settings: settings
         )
         self.menu = menu
         // En los tests la app hace de host y xcodebuild la cierra sin avisar (sin SIGTERM): el adaptador de música
         // quedaría huérfano en cada pasada, así que ahí no se arranca
         let isTestHost = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        // Las señales que refrescan la isla, sin tocar el yabairc. En los tests no: cambiarían el yabai real
+        if !isTestHost { signals = YabaiSignals(client: yabai, settings: settings, store: store) }
         let media = NowPlayingStore(adapter: isTestHost ? nil : MediaRemoteAdapter(), settings: settings)
         self.media = media
         let island = IslandController(
-            store: store, icons: AppIcons(), menu: menu, focuser: ShortcutFocuser(), settings: settings, media: media,
+            store: store, icons: AppIcons(), menu: menu, focuser: focuser, settings: settings, media: media,
             keepAwake: KeepAwake(), pomodoro: pomodoro
         )
         self.island = island
@@ -90,6 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         self?.island?.spaceDidChange()
                     }
                     store.requestRefresh()
+                    self?.signals?.verify()
                 }
             }
         }
@@ -101,6 +110,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         store.requestRefresh()
         handleTerminationSignal()
+
+        // La primera vez, lo que hace falta para que todo funcione
+        if !isTestHost, !settings.hasSeenWelcome {
+            settings.hasSeenWelcome = true
+            welcome.show()
+        }
     }
 
     // `kill`, `pkill` y yb.sh mandan SIGTERM, que por defecto cierra la app sin pasar por applicationWillTerminate
@@ -179,6 +194,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Logger.app.info("Aviso: yabaibar://refresh")
                 store?.requestRefresh()
             #if DEBUG
+            case "snapshot" where url.query() == "bienvenida":
+                welcome?.saveSnapshot()
             case "snapshot":
                 let peek: IslandPeek? = switch url.query() {
                 case "aviso": .track

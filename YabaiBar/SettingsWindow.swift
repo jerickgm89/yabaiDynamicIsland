@@ -84,6 +84,15 @@ struct SettingsView: View {
             }
 
             Section {
+                Toggle("Señales automáticas", isOn: $settings.autoYabaiSignals)
+            } header: {
+                Text("yabai")
+            } footer: {
+                Text("YabaiBar le pide a yabai que la avise al crear, cerrar o minimizar ventanas y al cambiar los espacios o las pantallas, sin tocar tu yabairc. Si yabai se reinicia, las vuelve a añadir. Al apagarlo se quitan, también las de tu yabairc si usan las mismas etiquetas (yb_*), hasta que reinicies yabai.")
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
                 Toggle("Batería y cargador", isOn: $settings.batteryAlerts)
                 Toggle("Botón de mantener despierto", isOn: $settings.keepAwakeButton)
             } header: {
