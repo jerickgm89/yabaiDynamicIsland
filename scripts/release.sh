@@ -110,15 +110,33 @@ ln -s /Applications "$stage/Applications"
 hdiutil create -quiet -volname "$APP $version" -srcfolder "$stage" -format ULFO -ov "$dmg"
 codesign --sign "$SIGN_IDENTITY" "$dmg"
 codesign --verify "$dmg" || fail "la firma del DMG no es válida"
-mount="$OUT/montado"
-mkdir -p "$mount"
-hdiutil attach -quiet -nobrowse -readonly -mountpoint "$mount" "$dmg"
-trap 'hdiutil detach -quiet "$mount" 2>/dev/null || true' EXIT
+hdiutil verify -quiet "$dmg" || fail "el DMG está dañado"
+# Se monta para revisar lo que lleva: en una carpeta temporal fuera de Documents, sin -quiet (si falla, se ve por
+# qué) y con reintentos, porque una vez el montaje falló sin motivo aparente y la imagen quedó adjuntada sin montar
+mount="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/yabaibar-dmg.XXXXXX")" && pwd -P)"
+device=""
+release_image() {
+  if [[ -n "$device" ]]; then hdiutil detach -quiet -force "$device" 2>/dev/null || true; fi
+  device=""
+}
+trap 'release_image; rmdir "$mount" 2>/dev/null || true' EXIT
+mounted=false
+for attempt in 1 2 3; do
+  attach_output="$(hdiutil attach -nobrowse -readonly -mountpoint "$mount" "$dmg" 2>&1)" || true
+  device="$(awk '/^\/dev\/disk[0-9]+[[:space:]]/ { print $1; exit }' <<<"$attach_output")"
+  if mount | grep -F " on $mount (" >/dev/null; then mounted=true; break; fi
+  warn "no se pudo montar el DMG (intento $attempt de 3): $(grep -v '^/dev/' <<<"$attach_output" | tail -1)"
+  release_image
+  sleep 2
+done
+$mounted || fail "no se pudo montar el DMG para revisarlo"
 [[ -L "$mount/Applications" ]] || fail "al DMG le falta el enlace a Aplicaciones"
 codesign --verify --deep --strict "$mount/$APP.app" || fail "la app del DMG no pasa codesign"
-hdiutil detach -quiet "$mount"
+release_image
+rmdir "$mount" 2>/dev/null || true
 trap - EXIT
-rm -rf "$stage"
+rm -rf "$stage" "$OUT/montado"
+echo "Contenido del DMG: bien"
 sha="$(shasum -a 256 "$dmg" | awk '{print $1}')"
 echo "$dmg"
 echo "SHA-256: $sha"
