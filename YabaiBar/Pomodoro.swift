@@ -78,6 +78,9 @@ struct PomodoroPeek: Equatable, Sendable {
         case started(minutes: Int)
         case ready
         case warning(seconds: Int)
+        /// Con el atajo, al pausar y al reanudar
+        case paused
+        case resumed(minutes: Int)
     }
 
     var phase: PomodoroPhase
@@ -93,6 +96,25 @@ struct PomodoroPeek: Equatable, Sendable {
         case .started(let minutes): "\(minutes) min"
         case .ready: "Listo para empezar"
         case .warning: phase.isBreak ? "del descanso" : "del foco"
+        case .paused: "En pausa"
+        case .resumed(let minutes): "Quedan \(minutes) min"
+        }
+    }
+
+    /// Cómo quedó el temporizador tras pulsar el atajo: empezado, reanudado o en pausa. nil sin sesión
+    static func status(of timer: PomodoroTimer, at now: Date) -> PomodoroPeek? {
+        switch timer.state {
+        case .stopped, .ready:
+            return nil
+        case .paused:
+            return PomodoroPeek(phase: timer.phase, kind: .paused)
+        case .running:
+            let remaining = timer.remaining(at: now)
+            // Recién empezada (con un segundo de margen), o a medias
+            if remaining >= timer.phaseDuration - 1 {
+                return PomodoroPeek(phase: timer.phase, kind: .started(minutes: max(1, Int((timer.phaseDuration / 60).rounded()))))
+            }
+            return PomodoroPeek(phase: timer.phase, kind: .resumed(minutes: max(1, Int((remaining / 60).rounded(.up)))))
         }
     }
 

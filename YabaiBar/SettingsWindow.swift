@@ -65,7 +65,12 @@ struct SettingsView: View {
 
             Section {
                 Toggle("Al pasar el puntero", isOn: $settings.openOnHover)
-                LabeledContent("Atajo") { ShortcutRecorder(settings: settings) }
+                LabeledContent("Atajo") {
+                    ShortcutRecorder(
+                        shortcut: $settings.toggleShortcut, defaultShortcut: .defaultToggle, error: settings.shortcutError,
+                        settings: settings
+                    )
+                }
                 Toggle("Ocultar sola", isOn: $settings.autoHide)
                 Stepper(value: $settings.autoHideDelay, in: AppSettings.autoHideDelays) {
                     Text("Al cabo de \(settings.autoHideDelay) s")
@@ -144,6 +149,12 @@ struct SettingsView: View {
             .disabled(!settings.showPomodoro)
 
             Section {
+                LabeledContent("Atajo") {
+                    ShortcutRecorder(
+                        shortcut: $settings.pomodoroShortcut, defaultShortcut: .defaultPomodoro,
+                        error: settings.pomodoroShortcutError, settings: settings
+                    )
+                }
                 Toggle("Empezar los descansos solos", isOn: $settings.pomodoroAutoStartBreaks)
                 Toggle("Empezar el foco solo tras el descanso", isOn: $settings.pomodoroAutoStartFocus)
                 Picker("Avisar antes de terminar", selection: $settings.pomodoroWarning) {
@@ -157,7 +168,7 @@ struct SettingsView: View {
             } header: {
                 Text("Sesión")
             } footer: {
-                Text("Los cambios de tiempo valen desde la siguiente fase. Si cambias un tiempo a mano, el preset pasa a «Personalizado».")
+                Text("El atajo inicia, pausa o reanuda el Pomodoro desde cualquier app. Los cambios de tiempo valen desde la siguiente fase; si cambias un tiempo a mano, el preset pasa a «Personalizado».")
                     .foregroundStyle(.secondary)
             }
             .disabled(!settings.showPomodoro)
@@ -181,17 +192,23 @@ struct SettingsView: View {
     }
 }
 
-// Graba un atajo nuevo: al pulsarlo escucha la siguiente tecla. Esc cancela y ⌫ deja la isla sin atajo
+// Graba un atajo nuevo: al pulsarlo escucha la siguiente tecla. Esc cancela y ⌫ deja el atajo vacío. Mientras uno
+// graba, no hay ningún atajo global registrado (`isRecordingShortcut`): Carbon se quedaría la tecla
 private struct ShortcutRecorder: View {
+    @Binding var shortcut: HotKeyShortcut?
+    let defaultShortcut: HotKeyShortcut
+    /// Por qué no se pudo registrar, si pasó
+    let error: String?
     @Bindable var settings: AppSettings
+    @State private var recording = false
     @State private var monitor: Any?
     @State private var rejected = false
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 4) {
             HStack {
-                if !settings.isRecordingShortcut, settings.toggleShortcut != .defaultToggle {
-                    Button("Restablecer") { settings.toggleShortcut = .defaultToggle }
+                if !recording, shortcut != defaultShortcut {
+                    Button("Restablecer") { shortcut = defaultShortcut }
                 }
                 Button(action: toggleRecording) {
                     Text(title).frame(minWidth: 120)
@@ -200,26 +217,27 @@ private struct ShortcutRecorder: View {
             if let hint {
                 Text(hint)
                     .font(.caption)
-                    .foregroundStyle(rejected || settings.shortcutError != nil ? .red : .secondary)
+                    .foregroundStyle(rejected || (error != nil && !recording) ? .red : .secondary)
             }
         }
         .onDisappear(perform: stopRecording)
     }
 
     private var title: String {
-        if settings.isRecordingShortcut { return "Pulsa el atajo…" }
-        return settings.toggleShortcut?.label ?? "Sin atajo"
+        if recording { return "Pulsa el atajo…" }
+        return shortcut?.label ?? "Sin atajo"
     }
 
     private var hint: String? {
         if rejected { return "Usa ⌘, ⌥ o ⌃ con otra tecla" }
-        if settings.isRecordingShortcut { return "Esc cancela · ⌫ quita el atajo" }
-        return settings.shortcutError
+        if recording { return "Esc cancela · ⌫ quita el atajo" }
+        return error
     }
 
     private func toggleRecording() {
-        if settings.isRecordingShortcut { return stopRecording() }
+        if recording { return stopRecording() }
         rejected = false
+        recording = true
         settings.isRecordingShortcut = true
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
@@ -228,7 +246,7 @@ private struct ShortcutRecorder: View {
             let character = event.charactersIgnoringModifiers ?? ""
             // Si la grabación terminó al cerrar la ventana, el monitor deja pasar la tecla
             let recorded = MainActor.assumeIsolated { () -> Bool in
-                guard settings.isRecordingShortcut else { return false }
+                guard recording, settings.isRecordingShortcut else { return false }
                 record(keyCode: keyCode, modifiers: modifiers, character: character)
                 return true
             }
@@ -240,7 +258,7 @@ private struct ShortcutRecorder: View {
     private func record(keyCode: Int, modifiers: Int, character: String) {
         if modifiers == 0, keyCode == kVK_Escape { return stopRecording() }
         if modifiers == 0, keyCode == kVK_Delete {
-            settings.toggleShortcut = nil
+            shortcut = nil
             return stopRecording()
         }
         guard let shortcut = HotKeyShortcut(keyCode: keyCode, modifiers: modifiers, character: character) else {
@@ -248,7 +266,7 @@ private struct ShortcutRecorder: View {
             NSSound.beep()
             return
         }
-        settings.toggleShortcut = shortcut
+        self.shortcut = shortcut
         stopRecording()
     }
 
@@ -256,6 +274,8 @@ private struct ShortcutRecorder: View {
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = nil
         rejected = false
+        guard recording else { return }
+        recording = false
         settings.isRecordingShortcut = false
     }
 

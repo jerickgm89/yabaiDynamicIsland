@@ -54,7 +54,7 @@ Su diseño se inspira en [Atoll](https://github.com/Ebullioscopic/Atoll) (ver [A
 
 **Pomodoro**
 
-- Un temporizador en la esquina izquierda de la isla abierta: un clic empieza un foco.
+- Un temporizador en la esquina izquierda de la isla abierta: un clic empieza un foco. Desde cualquier app, ⌥P lo empieza, lo pausa o lo reanuda, y la isla cerrada dice cómo quedó.
 - Mientras corre, una franja entre las tarjetas y la música enseña la fase ("Foco · 2 de 4 · hoy 3/8"), la barra de progreso y la cuenta atrás, con ⏯ (pausar o reanudar), ⏭ (saltar fase) y ⏹ (terminar).
 - Foco y descansos con un descanso largo cada pocos focos, y presets Clásico (25/5/15), Largo (50/10/30) y Corto (15/3/10), o tus propios tiempos.
 - En la isla cerrada, un anillo al final del ala derecha se va llenando con la fase: rojo en el foco, verde en el descanso, gris en pausa.
@@ -71,7 +71,7 @@ Su diseño se inspira en [Atoll](https://github.com/Ebullioscopic/Atoll) (ver [A
 - Abierta así, se oculta sola a los 3 s si no llevas el puntero hasta ella, y también se cierra con Esc o con un clic en otra app. Si llevas el puntero a la isla, desde ahí se comporta como con el hover.
 - Hacia arriba y a los lados no se usan, porque son de Mission Control y del cambio de escritorio (ver [Abrir la isla desde cualquier app](#abrir-la-isla-desde-cualquier-app)).
 - El gesto se lee con MultitouchSupport, un framework privado de Apple, porque macOS no ofrece una API pública para gestos de 3 o 4 dedos. Una actualización de macOS podría romperlo; el atajo seguiría funcionando.
-- Mientras YabaiBar está abierta, la combinación del atajo ya no llega a las demás apps. Con ⌥I, por ejemplo, ya no se escribe el circunflejo (ˆ).
+- Mientras YabaiBar está abierta, las combinaciones de sus atajos ya no llegan a las demás apps. Con ⌥I y ⌥P, por ejemplo, ya no se escriben "ˆ" ni "π".
 
 **Ajustes**
 
@@ -184,6 +184,7 @@ Haz clic en la isla y elige "Ajustes…". La ventana tiene tres pestañas, Gener
 | Batería y cargador | Los avisos al enchufar o desenchufar el cargador y con poca batería | Activado |
 | Botón de mantener despierto | El sol de la isla abierta. Al apagarlo, el Mac deja de mantenerse despierto | Activado |
 | Mostrar el Pomodoro | El temporizador y su franja en la isla abierta. Al apagarlo se termina la sesión | Activado |
+| Atajo del Pomodoro | La combinación que lo empieza, pausa o reanuda desde cualquier app. Se graba como el de la isla | ⌥P |
 | Anillo en la isla cerrada | El anillo de progreso al final del ala derecha mientras hay sesión | Activado |
 | Preset y tiempos | Foco (5–90 min), descanso corto (1–30), descanso largo (5–60) y cada cuántos focos toca el largo (2–8) | Clásico: 25/5/15, cada 4 |
 | Empezar solos | Si los descansos y el foco empiezan solos al terminar la fase anterior | Descansos sí, foco no |

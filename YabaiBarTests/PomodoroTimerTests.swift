@@ -230,3 +230,26 @@ struct PomodoroPeekTests {
         #expect(layout.statusItems == [.music, .keepAwake, .pomodoro])
     }
 }
+
+// Lo que enseña la isla tras pulsar el atajo del Pomodoro
+struct PomodoroStatusTests {
+    @Test func afterStartingItSaysHowLongTheFocusIs() {
+        #expect(PomodoroPeek.status(of: started(), at: start) == PomodoroPeek(phase: .focus, kind: .started(minutes: 2)))
+    }
+
+    @Test func afterPausingAndResumingItSaysWhatIsLeft() {
+        var timer = started()
+        timer.pause(at: start + 40)
+        let paused = PomodoroPeek.status(of: timer, at: start + 40)
+        #expect(paused == PomodoroPeek(phase: .focus, kind: .paused))
+        #expect(paused?.subtitle == "En pausa")
+        timer.resume(at: start + 50)
+        let resumed = PomodoroPeek.status(of: timer, at: start + 50)
+        #expect(resumed == PomodoroPeek(phase: .focus, kind: .resumed(minutes: 1)))
+        #expect(resumed?.subtitle == "Quedan 1 min")
+    }
+
+    @Test func nothingWithoutASession() {
+        #expect(PomodoroPeek.status(of: PomodoroTimer(), at: start) == nil)
+    }
+}

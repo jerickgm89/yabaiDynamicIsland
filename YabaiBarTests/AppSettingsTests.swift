@@ -37,6 +37,8 @@ struct AppSettingsTests {
             #expect(settings.pomodoroSound)
             #expect(settings.pomodoroDuckMusic)
             #expect(settings.pomodoroDuckLevel == 35)
+            #expect(settings.pomodoroShortcut == .defaultPomodoro)
+            #expect(settings.pomodoroShortcut?.label == "⌥P")
         }
     }
 
@@ -76,11 +78,15 @@ struct AppSettingsTests {
         }
     }
 
-    // Quitar el atajo no es lo mismo que no haberlo tocado nunca: no vuelve a ⌥I
+    // Quitar el atajo no es lo mismo que no haberlo tocado nunca: no vuelve a ⌥I ni a ⌥P
     @Test func remembersHavingNoShortcut() {
         withDefaults { defaults in
-            AppSettings(defaults: defaults).toggleShortcut = nil
-            #expect(AppSettings(defaults: defaults).toggleShortcut == nil)
+            let settings = AppSettings(defaults: defaults)
+            settings.toggleShortcut = nil
+            settings.pomodoroShortcut = nil
+            let reloaded = AppSettings(defaults: defaults)
+            #expect(reloaded.toggleShortcut == nil)
+            #expect(reloaded.pomodoroShortcut == nil)
         }
     }
 

@@ -17,10 +17,12 @@ final class AppSettings {
     /// nil: la isla no tiene atajo y solo se abre a petición con el gesto. Se guarda vacío, para distinguirlo de
     /// no haberlo cambiado nunca
     var toggleShortcut: HotKeyShortcut? {
-        didSet {
-            let data = toggleShortcut.flatMap { try? JSONEncoder().encode($0) } ?? Data()
-            defaults.set(data, forKey: Key.toggleShortcut)
-        }
+        didSet { Self.save(toggleShortcut, forKey: Key.toggleShortcut, in: defaults) }
+    }
+
+    /// El atajo que inicia, pausa o reanuda el Pomodoro desde cualquier app; nil, sin atajo
+    var pomodoroShortcut: HotKeyShortcut? {
+        didSet { Self.save(pomodoroShortcut, forKey: Key.pomodoroShortcut, in: defaults) }
     }
 
     /// Abierta con el atajo o con el gesto, se oculta sola si el puntero no llega a la isla
@@ -164,14 +166,16 @@ final class AppSettings {
 
     /// Mientras se graba un atajo nuevo no se escucha el actual: Carbon se lo quedaría antes que la ventana
     var isRecordingShortcut = false
-    /// Por qué no se pudo registrar el atajo, para mostrarlo en los ajustes
+    /// Por qué no se pudo registrar cada atajo, para mostrarlo en los ajustes
     var shortcutError: String?
+    var pomodoroShortcutError: String?
 
     @ObservationIgnored private let defaults: UserDefaults
 
     private enum Key {
         static let switchSpeed = "switchSpeed"
         static let toggleShortcut = "toggleShortcut"
+        static let pomodoroShortcut = "pomodoroShortcut"
         static let autoHide = "autoHide"
         static let autoHideDelay = "autoHideDelay"
         static let openOnHover = "openOnHover"
@@ -199,15 +203,8 @@ final class AppSettings {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         switchSpeed = defaults.string(forKey: Key.switchSpeed).flatMap(SwitchSpeed.init(rawValue:)) ?? .normal
-        // Sin valor guardado (o ilegible), ⌥I; guardado vacío, sin atajo
-        switch defaults.data(forKey: Key.toggleShortcut) {
-        case let data? where data.isEmpty:
-            toggleShortcut = nil
-        case let data?:
-            toggleShortcut = (try? JSONDecoder().decode(HotKeyShortcut.self, from: data)) ?? .defaultToggle
-        case nil:
-            toggleShortcut = .defaultToggle
-        }
+        toggleShortcut = Self.shortcut(forKey: Key.toggleShortcut, in: defaults, fallback: .defaultToggle)
+        pomodoroShortcut = Self.shortcut(forKey: Key.pomodoroShortcut, in: defaults, fallback: .defaultPomodoro)
         autoHide = defaults.object(forKey: Key.autoHide) as? Bool ?? true
         let delay = defaults.object(forKey: Key.autoHideDelay) as? Int ?? Self.defaultAutoHideDelay
         autoHideDelay = Self.autoHideDelays.contains(delay) ? delay : Self.defaultAutoHideDelay
@@ -255,6 +252,22 @@ enum NowPlayingSource: String, CaseIterable, Identifiable {
 
     func accepts(_ bundleIdentifier: String) -> Bool {
         self == .any || bundleIdentifier == NowPlaying.tidalBundleID
+    }
+}
+
+extension AppSettings {
+    // "Sin atajo" se guarda vacío, para distinguirlo de no haberlo cambiado nunca
+    private static func save(_ shortcut: HotKeyShortcut?, forKey key: String, in defaults: UserDefaults) {
+        defaults.set(shortcut.flatMap { try? JSONEncoder().encode($0) } ?? Data(), forKey: key)
+    }
+
+    // Sin valor guardado (o ilegible), el de por defecto; guardado vacío, sin atajo
+    private static func shortcut(forKey key: String, in defaults: UserDefaults, fallback: HotKeyShortcut) -> HotKeyShortcut? {
+        switch defaults.data(forKey: key) {
+        case let data? where data.isEmpty: nil
+        case let data?: (try? JSONDecoder().decode(HotKeyShortcut.self, from: data)) ?? fallback
+        case nil: fallback
+        }
     }
 }
 

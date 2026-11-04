@@ -62,6 +62,8 @@ struct HotKeyShortcut: Codable, Equatable {
     let label: String
 
     static let defaultToggle = HotKeyShortcut(keyCode: kVK_ANSI_I, modifiers: optionKey, label: "⌥I")
+    /// Iniciar o pausar el Pomodoro. skhd usa ⇧⌥P, no ⌥P, y en el teclado US solo escribía "π"
+    static let defaultPomodoro = HotKeyShortcut(keyCode: kVK_ANSI_P, modifiers: optionKey, label: "⌥P")
 
     private static let functionKeys: [Int: String] = [
         kVK_F1: "F1", kVK_F2: "F2", kVK_F3: "F3", kVK_F4: "F4", kVK_F5: "F5", kVK_F6: "F6",

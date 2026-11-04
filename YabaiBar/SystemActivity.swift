@@ -45,7 +45,11 @@ enum IslandPeek: Equatable {
         case .track: .seconds(3)
         case .battery(.low, _), .battery(.critical, _): .seconds(5)
         case .battery: .seconds(3)
-        case .pomodoro(let peek): if case .warning = peek.kind { .seconds(3) } else { .seconds(4) }
+        case .pomodoro(let peek):
+            switch peek.kind {
+            case .started, .ready: .seconds(4)
+            case .warning, .paused, .resumed: .seconds(3)
+            }
         }
     }
 

@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pomodoro: PomodoroStore?
     private var pomodoroCue: PomodoroCue?
     private var toggleKey: GlobalHotKey?
+    private var pomodoroKey: GlobalHotKey?
     private var trackpad: TrackpadMonitor?
     private var workspaceObservers: [NSObjectProtocol] = []
     private var refreshToken: Int32 = NOTIFY_TOKEN_INVALID
@@ -73,7 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Abrir la isla desde cualquier app, sin llevar el puntero: el atajo de los ajustes (⌥I) o 3 o 4 dedos hacia abajo
-        observeToggleShortcut()
+        observeShortcuts()
         trackpad = TrackpadMonitor {
             Logger.app.info("Gesto: 3 o 4 dedos hacia abajo")
             island.toggle()
@@ -123,28 +124,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pomodoroCue?.restoreNow()
     }
 
-    // Registra el atajo de los ajustes y lo vuelve a registrar cada vez que cambia. Mientras se graba uno nuevo,
-    // ninguno: Carbon se quedaría la tecla antes que la ventana de ajustes
-    private func observeToggleShortcut() {
+    // Registra los atajos de los ajustes (abrir la isla y el Pomodoro) y los vuelve a registrar cada vez que
+    // cambian. Mientras se graba uno nuevo, ninguno: Carbon se quedaría la tecla antes que la ventana de ajustes
+    private func observeShortcuts() {
         guard let settings else { return }
         withObservationTracking {
-            // Primero se suelta el anterior: registrar dos veces la misma combinación falla
+            // Primero se sueltan los anteriores: registrar dos veces la misma combinación falla
             toggleKey = nil
-            var error: String?
-            if let shortcut = settings.toggleShortcut, !settings.isRecordingShortcut {
-                toggleKey = GlobalHotKey(shortcut: shortcut) { [weak self] in
-                    Logger.app.info("Atajo: \(shortcut.label, privacy: .public)")
-                    self?.island?.toggle()
+            pomodoroKey = nil
+            var toggleError: String?
+            var pomodoroError: String?
+            if !settings.isRecordingShortcut {
+                if let shortcut = settings.toggleShortcut {
+                    toggleKey = register(shortcut) { [weak self] in self?.island?.toggle() }
+                    if toggleKey == nil { toggleError = Self.unavailable(shortcut) }
                 }
-                if toggleKey == nil {
-                    Logger.app.error("No se pudo registrar el atajo \(shortcut.label, privacy: .public)")
-                    error = "No se pudo usar \(shortcut.label): quizá lo tiene otra app"
+                if settings.showPomodoro, let shortcut = settings.pomodoroShortcut {
+                    if shortcut == settings.toggleShortcut {
+                        pomodoroError = "Es el mismo atajo que abre la isla"
+                    } else {
+                        pomodoroKey = register(shortcut) { [weak self] in
+                            self?.pomodoro?.toggle()
+                            self?.island?.showPomodoroStatus()
+                        }
+                        if pomodoroKey == nil { pomodoroError = Self.unavailable(shortcut) }
+                    }
                 }
             }
-            settings.shortcutError = error
+            settings.shortcutError = toggleError
+            settings.pomodoroShortcutError = pomodoroError
         } onChange: { [weak self] in
-            Task { @MainActor in self?.observeToggleShortcut() }
+            Task { @MainActor in self?.observeShortcuts() }
         }
+    }
+
+    private func register(_ shortcut: HotKeyShortcut, action: @escaping @MainActor @Sendable () -> Void) -> GlobalHotKey? {
+        let hotKey = GlobalHotKey(shortcut: shortcut) {
+            Logger.app.info("Atajo: \(shortcut.label, privacy: .public)")
+            action()
+        }
+        if hotKey == nil { Logger.app.error("No se pudo registrar el atajo \(shortcut.label, privacy: .public)") }
+        return hotKey
+    }
+
+    private static func unavailable(_ shortcut: HotKeyShortcut) -> String {
+        "No se pudo usar \(shortcut.label): quizá lo tiene otra app"
     }
 
     // yabaibar://refresh sigue funcionando para usarlo a mano; yabaibar://snapshot solo en DEBUG

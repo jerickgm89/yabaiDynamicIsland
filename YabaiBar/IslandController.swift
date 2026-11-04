@@ -358,6 +358,13 @@ final class IslandController {
         schedulePeek(.battery(event, level: state.level))
     }
 
+    /// Tras el atajo del Pomodoro: cómo quedó (empezado, reanudado o en pausa), porque con la isla cerrada no se ve
+    /// de otra forma más que en el color del anillo
+    func showPomodoroStatus() {
+        guard let peek = PomodoroPeek.status(of: pomodoro.timer, at: .now) else { return }
+        schedulePeek(.pomodoro(peek))
+    }
+
     /// Aviso de PomodoroStore: el cambio de fase o lo que queda, en la isla cerrada
     func pomodoroEvent(_ event: PomodoroEvent) {
         guard settings.showPomodoro else { return }
