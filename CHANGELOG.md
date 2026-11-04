@@ -2,7 +2,7 @@
 
 Las versiones de YabaiBar. La 3.0.0 es la primera que se instala sin compilar: con Homebrew o con el DMG de [Releases](https://github.com/jerickgm89/yabaiDynamicIsland/releases). `scripts/release.sh` copia la sección de cada versión en las notas de su release.
 
-## [3.0.0]
+## [3.0.0] - 2026-11-04
 
 La primera versión instalable: ya no hace falta Xcode ni tocar el `yabairc`.
 
