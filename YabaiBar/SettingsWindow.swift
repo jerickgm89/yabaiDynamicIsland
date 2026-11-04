@@ -37,10 +37,20 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     }
 }
 
+// Tres pestañas: lo general de la isla, la música y el Pomodoro. Cada una se desplaza si no cabe
 struct SettingsView: View {
     @Bindable var settings: AppSettings
 
     var body: some View {
+        TabView {
+            general.tabItem { Label("General", systemImage: "gearshape") }
+            music.tabItem { Label("Música", systemImage: "music.note") }
+            pomodoro.tabItem { Label("Pomodoro", systemImage: "timer") }
+        }
+        .frame(width: 480, height: 520)
+    }
+
+    private var general: some View {
         Form {
             Section {
                 Picker("Velocidad de las alas", selection: $settings.switchSpeed) {
@@ -69,6 +79,21 @@ struct SettingsView: View {
             }
 
             Section {
+                Toggle("Batería y cargador", isOn: $settings.batteryAlerts)
+                Toggle("Botón de mantener despierto", isOn: $settings.keepAwakeButton)
+            } header: {
+                Text("Actividades")
+            } footer: {
+                Text("Avisos al enchufar o desenchufar el cargador y al bajar del 20 % y del 10 %, y un sol en la isla abierta que impide que el Mac se duerma hasta que lo apagues.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private var music: some View {
+        Form {
+            Section {
                 Toggle("Mostrar lo que suena", isOn: $settings.showNowPlaying)
                 Group {
                     Picker("De", selection: $settings.nowPlayingSource) {
@@ -84,20 +109,58 @@ struct SettingsView: View {
                 Text("Con la isla abierta, la canción, la carátula y los botones; dos dedos de lado sobre ella cambian de canción. Lo lee del «Ahora suena» de macOS: no se envía nada a internet.")
                     .foregroundStyle(.secondary)
             }
-
-            Section {
-                Toggle("Batería y cargador", isOn: $settings.batteryAlerts)
-                Toggle("Botón de mantener despierto", isOn: $settings.keepAwakeButton)
-            } header: {
-                Text("Actividades")
-            } footer: {
-                Text("Avisos al enchufar o desenchufar el cargador y al bajar del 20 % y del 10 %, y un sol en la isla abierta que impide que el Mac se duerma hasta que lo apagues.")
-                    .foregroundStyle(.secondary)
-            }
         }
         .formStyle(.grouped)
-        .frame(width: 460)
-        .fixedSize()
+    }
+
+    private var pomodoro: some View {
+        Form {
+            Section {
+                Toggle("Mostrar el Pomodoro", isOn: $settings.showPomodoro)
+            } footer: {
+                Text("Un temporizador en la esquina izquierda de la isla abierta y, mientras corre, una franja con la cuenta atrás y los botones. Apagarlo termina la sesión.")
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Tiempos") {
+                Picker("Preset", selection: $settings.pomodoroPreset) {
+                    ForEach(PomodoroPreset.allCases) { Text($0.title).tag($0) }
+                }
+                Stepper(value: $settings.pomodoroFocusMinutes, in: AppSettings.focusMinutes, step: 5) {
+                    Text("Foco: \(settings.pomodoroFocusMinutes) min")
+                }
+                Stepper(value: $settings.pomodoroShortBreakMinutes, in: AppSettings.shortBreakMinutes) {
+                    Text("Descanso corto: \(settings.pomodoroShortBreakMinutes) min")
+                }
+                Stepper(value: $settings.pomodoroLongBreakMinutes, in: AppSettings.longBreakMinutes, step: 5) {
+                    Text("Descanso largo: \(settings.pomodoroLongBreakMinutes) min")
+                }
+                Stepper(value: $settings.pomodoroRounds, in: AppSettings.pomodoroRoundsRange) {
+                    Text("Descanso largo cada \(settings.pomodoroRounds) focos")
+                }
+            }
+            .disabled(!settings.showPomodoro)
+
+            Section {
+                Toggle("Empezar los descansos solos", isOn: $settings.pomodoroAutoStartBreaks)
+                Toggle("Empezar el foco solo tras el descanso", isOn: $settings.pomodoroAutoStartFocus)
+                Picker("Avisar antes de terminar", selection: $settings.pomodoroWarning) {
+                    ForEach(AppSettings.pomodoroWarnings, id: \.self) { seconds in
+                        Text(seconds == 0 ? "No" : "\(seconds) s").tag(seconds)
+                    }
+                }
+                Stepper(value: $settings.pomodoroDailyGoal, in: AppSettings.dailyGoals) {
+                    Text("Objetivo del día: \(settings.pomodoroDailyGoal) pomodoros")
+                }
+            } header: {
+                Text("Sesión")
+            } footer: {
+                Text("Los cambios de tiempo valen desde la siguiente fase. Si cambias un tiempo a mano, el preset pasa a «Personalizado».")
+                    .foregroundStyle(.secondary)
+            }
+            .disabled(!settings.showPomodoro)
+        }
+        .formStyle(.grouped)
     }
 }
 

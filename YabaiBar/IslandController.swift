@@ -43,8 +43,8 @@ final class IslandController {
 
     private enum Expansion { case closed, peek, open }
 
-    /// Alto del lienzo de la isla: cabe la isla abierta con su sombra
-    static let canvasHeight: CGFloat = 220
+    /// Alto del lienzo de la isla: cabe la isla abierta con su sombra, con las franjas del Pomodoro y de la música
+    static let canvasHeight: CGFloat = 270
 
     private let panel = IslandPanel(contentRect: .zero)
     private let container = IslandContainerView()
@@ -56,6 +56,7 @@ final class IslandController {
     private let settings: AppSettings
     private let media: NowPlayingStore
     private let keepAwake: KeepAwake
+    private let pomodoro: PomodoroStore
     private var geometry: NotchGeometry?
     private var screenWidth: CGFloat = 0
     // Copias de lo dibujado. No se leen del modelo dentro de render(): withObservationTracking
@@ -65,6 +66,8 @@ final class IslandController {
     private var currentFailed = false
     /// Hay música: la isla abierta tiene la franja "Ahora suena" y la cerrada, las barras
     private var currentHasMedia = false
+    /// Hay sesión de Pomodoro: la isla abierta tiene su franja
+    private var currentHasPomodoro = false
     /// El aviso que enseña la isla cerrada en lugar de los espacios (canción nueva o batería)
     private var currentPeek: IslandPeek?
     private var trackChanges = TrackChangeDetector()
@@ -88,7 +91,7 @@ final class IslandController {
 
     init(
         store: SpacesStore, icons: AppIcons, menu: AppMenu, focuser: ShortcutFocuser, settings: AppSettings,
-        media: NowPlayingStore, keepAwake: KeepAwake
+        media: NowPlayingStore, keepAwake: KeepAwake, pomodoro: PomodoroStore
     ) {
         self.store = store
         self.icons = icons
@@ -96,6 +99,7 @@ final class IslandController {
         self.settings = settings
         self.media = media
         self.keepAwake = keepAwake
+        self.pomodoro = pomodoro
         hosting = IslandHostingView(rootView: IslandView(model: model))
         // Que la vista no cambie el tamaño de la ventana: el marco lo decide NotchGeometry
         hosting.sizingOptions = []
@@ -114,6 +118,7 @@ final class IslandController {
         updateGeometry()
         observeStore()
         observeMedia()
+        observePomodoro()
         panel.orderFrontRegardless()
 
         screenObserver = NotificationCenter.default.addObserver(
@@ -278,8 +283,38 @@ final class IslandController {
             maxBodyWidth: screenWidth - 60 - 2 * IslandView.openTopRadius,
             topHeight: geometry.notch.height,
             hasMedia: currentHasMedia,
-            hasKeepAwake: settings.keepAwakeButton
+            hasKeepAwake: settings.keepAwakeButton,
+            hasPomodoro: currentHasPomodoro,
+            hasPomodoroButton: settings.showPomodoro
         )
+    }
+
+    // MARK: - Pomodoro
+
+    // Aparte de render(), como la música: el Pomodoro cambia de estado y no tiene que recalcular las alas
+    private func observePomodoro() {
+        withObservationTracking {
+            updatePomodoro()
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.observePomodoro() }
+        }
+    }
+
+    private func updatePomodoro() {
+        // Con el Pomodoro apagado en Ajustes, la sesión termina
+        if !settings.showPomodoro, pomodoro.timer.isActive { pomodoro.stop() }
+        let timer = pomodoro.timer
+        let active = timer.isActive && settings.showPomodoro
+        let appeared = active != currentHasPomodoro
+        currentHasPomodoro = active
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        withAnimation(reduceMotion ? Self.reducedAnimation : Self.cardAnimation) {
+            model.pomodoro = active ? timer : nil
+            model.pomodoroRounds = pomodoro.rules.durations.roundsUntilLongBreak
+            model.pomodoroGoal = settings.pomodoroDailyGoal
+        }
+        // Si la franja aparece o desaparece, cambia el alto de la isla abierta
+        if appeared { apply(spaces: currentSpaces, failed: currentFailed) }
     }
 
     // MARK: - Ahora suena
@@ -580,6 +615,9 @@ final class IslandController {
         Logger.app.info("Clic: \(String(describing: control), privacy: .public)")
         switch control {
         case .keepAwake: keepAwake.toggle()
+        case .pomodoroToggle, .pomodoroPlayPause: pomodoro.toggle()
+        case .pomodoroSkip: pomodoro.skip()
+        case .pomodoroStop: pomodoro.stop()
         case .playPause: media.togglePlayPause()
         case .next: media.nextTrack()
         case .previous: media.previousTrack()

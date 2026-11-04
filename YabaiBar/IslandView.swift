@@ -49,6 +49,11 @@ final class IslandModel {
     var peek: IslandPeek?
     /// Mantener despierto activado: el sol de la isla abierta se enciende
     var keepAwakeActive = false
+    /// El Pomodoro, si hay sesión; la franja solo se ve con la isla abierta y `expanded.hasPomodoro`
+    var pomodoro: PomodoroTimer?
+    /// Para el texto de la franja: los focos de cada ronda y el objetivo del día
+    var pomodoroRounds = 4
+    var pomodoroGoal = 8
 
     var islandWidth: CGFloat {
         if isExpanded { return expanded.bodyWidth + 2 * IslandView.openTopRadius }
@@ -96,6 +101,11 @@ struct IslandView: View {
             .scaleEffect(model.wingsTucked && !model.reduceMotion ? 0.85 : 1)
             if model.isExpanded {
                 cards.padding(.top, IslandExpandedLayout.gapBelowNotch)
+                if model.expanded.hasPomodoro, let pomodoro = model.pomodoro {
+                    pomodoroStrip(pomodoro)
+                        .padding(.top, IslandExpandedLayout.pomodoroGap)
+                        .transition(.opacity)
+                }
                 if model.expanded.hasMedia, let nowPlaying = model.nowPlaying {
                     mediaStrip(nowPlaying)
                         .padding(.top, IslandExpandedLayout.mediaGap)
@@ -105,7 +115,10 @@ struct IslandView: View {
         }
         .frame(width: model.islandWidth, height: model.islandHeight, alignment: .top)
         .overlay(alignment: .topLeading) {
-            if model.isExpanded { keepAwakeButton }
+            if model.isExpanded {
+                keepAwakeButton
+                pomodoroButton
+            }
         }
         .background(
             IslandShape(
@@ -402,6 +415,91 @@ struct IslandView: View {
                 .offset(x: frame.minX, y: frame.minY)
                 .transition(.opacity)
         }
+    }
+
+    // MARK: - Pomodoro
+
+    static let focusColor = Color(red: 1, green: 0.42, blue: 0.33)
+    static let breakColor = Color(red: 0.49, green: 0.91, blue: 0.53)
+
+    // El botón del Pomodoro, arriba a la izquierda: gris si está parado o en pausa, del color de la fase si corre
+    @ViewBuilder private var pomodoroButton: some View {
+        if let frame = model.expanded.pomodoroButtonFrame(islandWidth: model.islandWidth, topHeight: model.height) {
+            let hovered = model.hoveredControl == .pomodoroToggle
+            let timer = model.pomodoro
+            Image(systemName: "timer")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(timer?.isRunning == true ? Self.phaseColor(timer?.phase ?? .focus) : .white.opacity(hovered ? 0.9 : 0.55))
+                .frame(width: frame.width, height: frame.height)
+                .background(Circle().fill(.white.opacity(hovered ? 0.14 : 0)))
+                .scaleEffect(!model.reduceMotion && model.pressedControl == .pomodoroToggle ? 0.88 : 1)
+                .offset(x: frame.minX, y: frame.minY)
+                .transition(.opacity)
+        }
+    }
+
+    // La fase, la ronda y el progreso a la izquierda; la cuenta atrás y ⏯ ⏭ ⏹ a la derecha. Se redibuja cada
+    // segundo solo mientras corre y la isla está abierta
+    private func pomodoroStrip(_ timer: PomodoroTimer) -> some View {
+        let color = Self.phaseColor(timer.phase)
+        return TimelineView(.animation(minimumInterval: 1, paused: !timer.isRunning)) { context in
+            HStack(spacing: 10) {
+                Image(systemName: timer.phase.isBreak ? "leaf.fill" : "target")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(color)
+                    .frame(width: IslandExpandedLayout.artworkSize)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(pomodoroTitle(timer, at: context.date))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                    GeometryReader { proxy in
+                        Capsule()
+                            .fill(.white.opacity(0.15))
+                            .overlay(alignment: .leading) {
+                                Capsule().fill(color.opacity(0.9)).frame(width: proxy.size.width * timer.progress(at: context.date))
+                            }
+                    }
+                    .frame(height: 3)
+                }
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Text(Self.countdown(timer.state == .ready ? timer.phaseDuration : timer.remaining(at: context.date)))
+                    .font(.system(size: 20, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(timer.isRunning ? .white : .white.opacity(0.5))
+                    .fixedSize()
+                HStack(spacing: IslandExpandedLayout.controlSpacing) {
+                    control(.pomodoroPlayPause, symbol: timer.isRunning ? "pause.fill" : "play.fill")
+                    control(.pomodoroSkip, symbol: "forward.end.fill")
+                    control(.pomodoroStop, symbol: "stop.fill")
+                }
+            }
+        }
+        .frame(width: model.expanded.mediaWidth, height: IslandExpandedLayout.pomodoroHeight)
+    }
+
+    // "Foco · 2 de 4 · hoy 3/8", con "en pausa" o "lista para empezar" si toca
+    private func pomodoroTitle(_ timer: PomodoroTimer, at date: Date) -> String {
+        let name = switch timer.phase {
+        case .focus: "Foco"
+        case .shortBreak: "Descanso"
+        case .longBreak: "Descanso largo"
+        }
+        let round = timer.phase == .focus ? timer.completedInRound + 1 : timer.completedInRound
+        var parts = [name, "\(round) de \(model.pomodoroRounds)", "hoy \(timer.completed(on: date))/\(model.pomodoroGoal)"]
+        if case .paused = timer.state { parts.append("en pausa") }
+        if timer.state == .ready { parts.append("lista") }
+        return parts.joined(separator: " · ")
+    }
+
+    static func phaseColor(_ phase: PomodoroPhase) -> Color {
+        phase.isBreak ? breakColor : focusColor
+    }
+
+    // "24:59"
+    private static func countdown(_ seconds: TimeInterval) -> String {
+        let total = Int(seconds.rounded(.up))
+        return "\(total / 60):" + String(format: "%02d", total % 60)
     }
 
     private static func batterySymbol(_ event: BatteryEvent, level: Int) -> String {

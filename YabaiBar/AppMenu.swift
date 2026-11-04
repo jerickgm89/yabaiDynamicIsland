@@ -8,11 +8,15 @@ final class AppMenu: NSObject, NSMenuDelegate {
     private let store: SpacesStore
     private let launchAtLogin: LaunchAtLogin
     private let settingsWindow: SettingsWindow
+    private let pomodoro: PomodoroStore
+    private let settings: AppSettings
 
-    init(store: SpacesStore, launchAtLogin: LaunchAtLogin, settingsWindow: SettingsWindow) {
+    init(store: SpacesStore, launchAtLogin: LaunchAtLogin, settingsWindow: SettingsWindow, pomodoro: PomodoroStore, settings: AppSettings) {
         self.store = store
         self.launchAtLogin = launchAtLogin
         self.settingsWindow = settingsWindow
+        self.pomodoro = pomodoro
+        self.settings = settings
         super.init()
         menu.delegate = self
     }
@@ -22,6 +26,25 @@ final class AppMenu: NSObject, NSMenuDelegate {
         if let error = store.lastError {
             // Sin acción: el menú lo muestra deshabilitado, como un aviso
             menu.addItem(NSMenuItem(title: error.userMessage, action: nil, keyEquivalent: ""))
+            menu.addItem(.separator())
+        }
+
+        if settings.showPomodoro {
+            let timer = pomodoro.timer
+            let title = switch timer.state {
+            case .stopped: "Iniciar Pomodoro"
+            case .ready: timer.phase.isBreak ? "Empezar el descanso" : "Empezar el foco"
+            case .running: "Pausar Pomodoro"
+            case .paused: "Reanudar Pomodoro"
+            }
+            let toggle = NSMenuItem(title: title, action: #selector(togglePomodoro), keyEquivalent: "")
+            toggle.target = self
+            menu.addItem(toggle)
+            if timer.isActive {
+                let stop = NSMenuItem(title: "Terminar Pomodoro", action: #selector(stopPomodoro), keyEquivalent: "")
+                stop.target = self
+                menu.addItem(stop)
+            }
             menu.addItem(.separator())
         }
 
@@ -57,6 +80,14 @@ final class AppMenu: NSObject, NSMenuDelegate {
 
     @objc private func openSettings() {
         settingsWindow.show()
+    }
+
+    @objc private func togglePomodoro() {
+        pomodoro.toggle()
+    }
+
+    @objc private func stopPomodoro() {
+        pomodoro.stop()
     }
 }
 

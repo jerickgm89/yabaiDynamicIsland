@@ -27,6 +27,12 @@ struct AppSettingsTests {
             #expect(settings.announceTracks)
             #expect(settings.batteryAlerts)
             #expect(settings.keepAwakeButton)
+            #expect(settings.showPomodoro)
+            #expect(settings.pomodoroPreset == .classic)
+            #expect(settings.pomodoroAutoStartBreaks)
+            #expect(!settings.pomodoroAutoStartFocus)
+            #expect(settings.pomodoroWarning == 30)
+            #expect(settings.pomodoroDailyGoal == 8)
         }
     }
 
@@ -45,6 +51,8 @@ struct AppSettingsTests {
             settings.announceTracks = false
             settings.batteryAlerts = false
             settings.keepAwakeButton = false
+            settings.pomodoroPreset = .long
+            settings.pomodoroWarning = 60
 
             let reloaded = AppSettings(defaults: defaults)
             #expect(reloaded.switchSpeed == .fast)
@@ -58,6 +66,9 @@ struct AppSettingsTests {
             #expect(!reloaded.announceTracks)
             #expect(!reloaded.batteryAlerts)
             #expect(!reloaded.keepAwakeButton)
+            #expect(reloaded.pomodoroPreset == .long)
+            #expect(reloaded.pomodoroDurations.focus == 50 * 60)
+            #expect(reloaded.pomodoroWarning == 60)
         }
     }
 
@@ -66,6 +77,17 @@ struct AppSettingsTests {
         withDefaults { defaults in
             AppSettings(defaults: defaults).toggleShortcut = nil
             #expect(AppSettings(defaults: defaults).toggleShortcut == nil)
+        }
+    }
+
+    // Cambiar un tiempo a mano deja el preset en "Personalizado"
+    @Test func editingATimeMakesThePresetCustom() {
+        withDefaults { defaults in
+            let settings = AppSettings(defaults: defaults)
+            settings.pomodoroFocusMinutes = 30
+            #expect(settings.pomodoroPreset == .custom)
+            settings.pomodoroPreset = .short
+            #expect(settings.pomodoroFocusMinutes == 15)
         }
     }
 

@@ -2,7 +2,7 @@
 
 Una isla alrededor del notch del Mac que muestra los espacios de [yabai](https://github.com/asmvik/yabai), con los íconos de sus apps, y resalta el activo. Es una app nativa de macOS escrita en Swift 6 con SwiftUI y AppKit.
 
-La isla vive por encima de la barra de menús, nace del notch como la Dynamic Island y está en todos los escritorios. Para ver qué apps tienes en cada escritorio, ábrela de tres formas: pasa el puntero por encima, desliza 3 o 4 dedos hacia abajo en el trackpad o pulsa un atajo de teclado (⌥I), desde cualquier app. Desde sus tarjetas saltas a cualquier escritorio y, debajo, ves y controlas la música que suena (TIDAL o cualquier app del "Ahora suena" de macOS). También avisa del cargador y de la batería baja, y puede mantener el Mac despierto. Una ventana de ajustes te deja cambiar la velocidad de la animación, el atajo, cuándo se abre y se oculta, qué música muestra y qué actividades.
+La isla vive por encima de la barra de menús, nace del notch como la Dynamic Island y está en todos los escritorios. Para ver qué apps tienes en cada escritorio, ábrela de tres formas: pasa el puntero por encima, desliza 3 o 4 dedos hacia abajo en el trackpad o pulsa un atajo de teclado (⌥I), desde cualquier app. Desde sus tarjetas saltas a cualquier escritorio y, debajo, ves y controlas la música que suena (TIDAL o cualquier app del "Ahora suena" de macOS). También avisa del cargador y de la batería baja, y puede mantener el Mac despierto. Trae un Pomodoro. Una ventana de ajustes te deja cambiar la velocidad de la animación, el atajo, cuándo se abre y se oculta, qué música muestra, qué actividades y los tiempos del Pomodoro.
 
 Su diseño se inspira en [Atoll](https://github.com/Ebullioscopic/Atoll) (ver [Agradecimientos](#agradecimientos)).
 
@@ -51,6 +51,13 @@ Su diseño se inspira en [Atoll](https://github.com/Ebullioscopic/Atoll) (ver [A
 
 - Al enchufar o desenchufar el cargador, la isla cerrada enseña 3 s el rayo y el porcentaje. Con poca batería (20 % y 10 %) avisa en naranja y en rojo.
 - En la isla abierta, arriba a la derecha, un sol mantiene el Mac despierto: ni la pantalla ni el sistema se duermen hasta que lo apagues. Mientras está activo, un sol pequeño en la isla cerrada lo recuerda.
+
+**Pomodoro**
+
+- Un temporizador en la esquina izquierda de la isla abierta: un clic empieza un foco.
+- Mientras corre, una franja entre las tarjetas y la música enseña la fase ("Foco · 2 de 4 · hoy 3/8"), la barra de progreso y la cuenta atrás, con ⏯ (pausar o reanudar), ⏭ (saltar fase) y ⏹ (terminar).
+- Foco y descansos con un descanso largo cada pocos focos, y presets Clásico (25/5/15), Largo (50/10/30) y Corto (15/3/10), o tus propios tiempos.
+- Sigue funcionando aunque el Mac duerma o reinicies YabaiBar. También se maneja desde el menú.
 
 **Abierta desde cualquier app**
 
@@ -151,7 +158,7 @@ El gesto y el atajo funcionan nada más abrir la app, sin permisos.
 
 ### Ajustes
 
-Haz clic en la isla y elige "Ajustes…". Los cambios se aplican al momento y se guardan para la próxima vez.
+Haz clic en la isla y elige "Ajustes…". La ventana tiene tres pestañas, General, Música y Pomodoro. Los cambios se aplican al momento y se guardan para la próxima vez.
 
 <p align="center">
   <img src="assets/ajustes.png" width="470" alt="La ventana de ajustes: velocidad de las alas en Normal, atajo ⌥I, Ocultar sola activado y al cabo de 3 s">
@@ -170,6 +177,11 @@ Haz clic en la isla y elige "Ajustes…". Los cambios se aplican al momento y se
 | Avisar al cambiar de canción | La carátula y el título durante 3 s en la isla cerrada | Activado |
 | Batería y cargador | Los avisos al enchufar o desenchufar el cargador y con poca batería | Activado |
 | Botón de mantener despierto | El sol de la isla abierta. Al apagarlo, el Mac deja de mantenerse despierto | Activado |
+| Mostrar el Pomodoro | El temporizador y su franja en la isla abierta. Al apagarlo se termina la sesión | Activado |
+| Preset y tiempos | Foco (5–90 min), descanso corto (1–30), descanso largo (5–60) y cada cuántos focos toca el largo (2–8) | Clásico: 25/5/15, cada 4 |
+| Empezar solos | Si los descansos y el foco empiezan solos al terminar la fase anterior | Descansos sí, foco no |
+| Avisar antes de terminar | Segundos antes del final de cada fase: no, 10, 15, 30 o 60 | 30 s |
+| Objetivo del día | Cuántos pomodoros quieres hacer hoy (1–16) | 8 |
 
 ## Desarrollo
 
@@ -200,6 +212,7 @@ En la build Debug, la URL `yabaibar://snapshot` (o `yabaibar://snapshot?abierta`
   - `AppSettings` guarda los ajustes y `SettingsWindow` los muestra.
   - `MediaRemoteAdapter` ejecuta el adaptador de música, `NowPlayingParser` entiende lo que manda y `NowPlayingStore` lo publica para la isla.
   - `BatteryMonitor` y `KeepAwake` se encargan de las actividades del sistema.
+  - `PomodoroTimer` es la lógica del Pomodoro y `PomodoroStore` lo pone en marcha.
 - `Vendor/mediaremote-adapter/`: el código de mediaremote-adapter, sin cambios y con su licencia. Lo compila el target `MediaRemoteAdapter` de `project.yml`.
 - `YabaiBarTests/`: tests con Swift Testing y fixtures JSON reales de yabai. Se ejecutan dentro de la app, que también consulta el yabai real.
 - `assets/`: las capturas de este README.

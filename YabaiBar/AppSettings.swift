@@ -67,6 +67,79 @@ final class AppSettings {
         didSet { defaults.set(keepAwakeButton, forKey: Key.keepAwakeButton) }
     }
 
+    // MARK: - Pomodoro
+
+    static let focusMinutes = 5...90
+    static let shortBreakMinutes = 1...30
+    static let longBreakMinutes = 5...60
+    static let pomodoroRoundsRange = 2...8
+    static let dailyGoals = 1...16
+    /// Segundos antes del final para el aviso; 0, sin aviso
+    static let pomodoroWarnings = [0, 10, 15, 30, 60]
+
+    /// El botón y la franja del Pomodoro en la isla abierta. Al apagarlo se termina la sesión
+    var showPomodoro: Bool {
+        didSet { defaults.set(showPomodoro, forKey: Key.showPomodoro) }
+    }
+
+    var pomodoroFocusMinutes: Int {
+        didSet { defaults.set(pomodoroFocusMinutes, forKey: Key.pomodoroFocusMinutes) }
+    }
+
+    var pomodoroShortBreakMinutes: Int {
+        didSet { defaults.set(pomodoroShortBreakMinutes, forKey: Key.pomodoroShortBreakMinutes) }
+    }
+
+    var pomodoroLongBreakMinutes: Int {
+        didSet { defaults.set(pomodoroLongBreakMinutes, forKey: Key.pomodoroLongBreakMinutes) }
+    }
+
+    /// Cada cuántos focos toca el descanso largo
+    var pomodoroRounds: Int {
+        didSet { defaults.set(pomodoroRounds, forKey: Key.pomodoroRounds) }
+    }
+
+    var pomodoroAutoStartBreaks: Bool {
+        didSet { defaults.set(pomodoroAutoStartBreaks, forKey: Key.pomodoroAutoStartBreaks) }
+    }
+
+    var pomodoroAutoStartFocus: Bool {
+        didSet { defaults.set(pomodoroAutoStartFocus, forKey: Key.pomodoroAutoStartFocus) }
+    }
+
+    /// Segundos antes del final para el aviso; 0, sin aviso
+    var pomodoroWarning: Int {
+        didSet { defaults.set(pomodoroWarning, forKey: Key.pomodoroWarning) }
+    }
+
+    var pomodoroDailyGoal: Int {
+        didSet { defaults.set(pomodoroDailyGoal, forKey: Key.pomodoroDailyGoal) }
+    }
+
+    /// El preset que corresponde a los tiempos; elegir uno cambia los cuatro tiempos de golpe
+    var pomodoroPreset: PomodoroPreset {
+        get {
+            PomodoroPreset.matching(
+                focus: pomodoroFocusMinutes, shortBreak: pomodoroShortBreakMinutes,
+                longBreak: pomodoroLongBreakMinutes, rounds: pomodoroRounds
+            )
+        }
+        set {
+            guard let minutes = newValue.minutes else { return }
+            pomodoroFocusMinutes = minutes.focus
+            pomodoroShortBreakMinutes = minutes.shortBreak
+            pomodoroLongBreakMinutes = minutes.longBreak
+            pomodoroRounds = minutes.rounds
+        }
+    }
+
+    var pomodoroDurations: PomodoroDurations {
+        PomodoroDurations(
+            focus: TimeInterval(pomodoroFocusMinutes * 60), shortBreak: TimeInterval(pomodoroShortBreakMinutes * 60),
+            longBreak: TimeInterval(pomodoroLongBreakMinutes * 60), roundsUntilLongBreak: pomodoroRounds
+        )
+    }
+
     /// Mientras se graba un atajo nuevo no se escucha el actual: Carbon se lo quedaría antes que la ventana
     var isRecordingShortcut = false
     /// Por qué no se pudo registrar el atajo, para mostrarlo en los ajustes
@@ -86,6 +159,15 @@ final class AppSettings {
         static let announceTracks = "announceTracks"
         static let batteryAlerts = "batteryAlerts"
         static let keepAwakeButton = "keepAwakeButton"
+        static let showPomodoro = "showPomodoro"
+        static let pomodoroFocusMinutes = "pomodoroFocusMinutes"
+        static let pomodoroShortBreakMinutes = "pomodoroShortBreakMinutes"
+        static let pomodoroLongBreakMinutes = "pomodoroLongBreakMinutes"
+        static let pomodoroRounds = "pomodoroRounds"
+        static let pomodoroAutoStartBreaks = "pomodoroAutoStartBreaks"
+        static let pomodoroAutoStartFocus = "pomodoroAutoStartFocus"
+        static let pomodoroWarning = "pomodoroWarning"
+        static let pomodoroDailyGoal = "pomodoroDailyGoal"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -110,6 +192,20 @@ final class AppSettings {
         announceTracks = defaults.object(forKey: Key.announceTracks) as? Bool ?? true
         batteryAlerts = defaults.object(forKey: Key.batteryAlerts) as? Bool ?? true
         keepAwakeButton = defaults.object(forKey: Key.keepAwakeButton) as? Bool ?? true
+        showPomodoro = defaults.object(forKey: Key.showPomodoro) as? Bool ?? true
+        // Lo guardado fuera de su rango vuelve al valor del preset clásico
+        let int = { (key: String, range: ClosedRange<Int>, fallback: Int) -> Int in
+            (defaults.object(forKey: key) as? Int).flatMap { range.contains($0) ? $0 : nil } ?? fallback
+        }
+        pomodoroFocusMinutes = int(Key.pomodoroFocusMinutes, Self.focusMinutes, 25)
+        pomodoroShortBreakMinutes = int(Key.pomodoroShortBreakMinutes, Self.shortBreakMinutes, 5)
+        pomodoroLongBreakMinutes = int(Key.pomodoroLongBreakMinutes, Self.longBreakMinutes, 15)
+        pomodoroRounds = int(Key.pomodoroRounds, Self.pomodoroRoundsRange, 4)
+        pomodoroAutoStartBreaks = defaults.object(forKey: Key.pomodoroAutoStartBreaks) as? Bool ?? true
+        pomodoroAutoStartFocus = defaults.object(forKey: Key.pomodoroAutoStartFocus) as? Bool ?? false
+        let warning = defaults.object(forKey: Key.pomodoroWarning) as? Int ?? 30
+        pomodoroWarning = Self.pomodoroWarnings.contains(warning) ? warning : 30
+        pomodoroDailyGoal = int(Key.pomodoroDailyGoal, Self.dailyGoals, 8)
     }
 }
 

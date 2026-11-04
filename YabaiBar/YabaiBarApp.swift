@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settings: AppSettings?
     private var media: NowPlayingStore?
     private var battery: BatteryMonitor?
+    private var pomodoro: PomodoroStore?
     private var toggleKey: GlobalHotKey?
     private var trackpad: TrackpadMonitor?
     private var workspaceObservers: [NSObjectProtocol] = []
@@ -44,7 +45,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.store = store
         let settings = AppSettings()
         self.settings = settings
-        let menu = AppMenu(store: store, launchAtLogin: LaunchAtLogin(), settingsWindow: SettingsWindow(settings: settings))
+        let pomodoro = PomodoroStore(settings: settings)
+        self.pomodoro = pomodoro
+        let menu = AppMenu(
+            store: store, launchAtLogin: LaunchAtLogin(), settingsWindow: SettingsWindow(settings: settings),
+            pomodoro: pomodoro, settings: settings
+        )
         self.menu = menu
         // En los tests la app hace de host y xcodebuild la cierra sin avisar (sin SIGTERM): el adaptador de música
         // quedaría huérfano en cada pasada, así que ahí no se arranca
@@ -53,7 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.media = media
         let island = IslandController(
             store: store, icons: AppIcons(), menu: menu, focuser: ShortcutFocuser(), settings: settings, media: media,
-            keepAwake: KeepAwake()
+            keepAwake: KeepAwake(), pomodoro: pomodoro
         )
         self.island = island
         battery = BatteryMonitor { state in island.batteryChanged(state) }
@@ -145,6 +151,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 )
             case "stress":
                 island?.stressTest()
+            case "pomodoro-demo":
+                pomodoro?.startDemo()
             #endif
             default:
                 Logger.app.info("URL sin acción: \(url.absoluteString, privacy: .public)")
