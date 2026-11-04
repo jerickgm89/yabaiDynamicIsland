@@ -59,6 +59,10 @@ Su diseño se inspira en [Atoll](https://github.com/Ebullioscopic/Atoll) (ver [A
 - Foco y descansos con un descanso largo cada pocos focos, y presets Clásico (25/5/15), Largo (50/10/30) y Corto (15/3/10), o tus propios tiempos.
 - En la isla cerrada, un anillo al final del ala derecha se va llenando con la fase: rojo en el foco, verde en el descanso, gris en pausa.
 - Al cambiar de fase, la isla cerrada avisa 4 s ("Descanso · 5 min"), y antes del final, "Quedan 30 s".
+- Avisa sin alarmas, con sonidos propios sintetizados en código:
+  - 30 s antes del final, una nota de kalimba; si suena música, el volumen baja poco a poco y se queda bajo hasta el final.
+  - Al terminar, la música vuelve a tu volumen y suena un cuenco tibetano (fin del foco) o dos notas que suben (fin del descanso).
+  - Si tocas el volumen mientras está bajado, se queda como lo dejes.
 - Sigue funcionando aunque el Mac duerma o reinicies YabaiBar. También se maneja desde el menú.
 
 **Abierta desde cualquier app**
@@ -185,6 +189,8 @@ Haz clic en la isla y elige "Ajustes…". La ventana tiene tres pestañas, Gener
 | Empezar solos | Si los descansos y el foco empiezan solos al terminar la fase anterior | Descansos sí, foco no |
 | Avisar antes de terminar | Segundos antes del final de cada fase: no, 10, 15, 30 o 60 | 30 s |
 | Objetivo del día | Cuántos pomodoros quieres hacer hoy (1–16) | 8 |
+| Sonidos | La kalimba del aviso, y el cuenco o las dos notas al terminar cada fase | Activado |
+| Bajar la música en el aviso | Si suena música, el volumen baja desde el aviso hasta el final de la fase | Activado, al 35 % |
 
 ## Desarrollo
 
@@ -216,6 +222,7 @@ En la build Debug, la URL `yabaibar://snapshot` (o `yabaibar://snapshot?abierta`
   - `MediaRemoteAdapter` ejecuta el adaptador de música, `NowPlayingParser` entiende lo que manda y `NowPlayingStore` lo publica para la isla.
   - `BatteryMonitor` y `KeepAwake` se encargan de las actividades del sistema.
   - `PomodoroTimer` es la lógica del Pomodoro y `PomodoroStore` lo pone en marcha.
+  - `CueSynth` sintetiza los sonidos, `VolumeDucker` baja y sube el volumen y `PomodoroCue` decide qué hacer en cada aviso.
 - `Vendor/mediaremote-adapter/`: el código de mediaremote-adapter, sin cambios y con su licencia. Lo compila el target `MediaRemoteAdapter` de `project.yml`.
 - `YabaiBarTests/`: tests con Swift Testing y fixtures JSON reales de yabai. Se ejecutan dentro de la app, que también consulta el yabai real.
 - `assets/`: las capturas de este README.

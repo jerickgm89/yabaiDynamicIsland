@@ -121,6 +121,23 @@ final class AppSettings {
         didSet { defaults.set(showPomodoroRing, forKey: Key.showPomodoroRing) }
     }
 
+    static let duckLevels = 20...60
+
+    /// Los sonidos del aviso y del final de cada fase
+    var pomodoroSound: Bool {
+        didSet { defaults.set(pomodoroSound, forKey: Key.pomodoroSound) }
+    }
+
+    /// En el aviso, si suena música, el volumen baja hasta el final de la fase
+    var pomodoroDuckMusic: Bool {
+        didSet { defaults.set(pomodoroDuckMusic, forKey: Key.pomodoroDuckMusic) }
+    }
+
+    /// Hasta qué porcentaje del volumen que había
+    var pomodoroDuckLevel: Int {
+        didSet { defaults.set(pomodoroDuckLevel, forKey: Key.pomodoroDuckLevel) }
+    }
+
     /// El preset que corresponde a los tiempos; elegir uno cambia los cuatro tiempos de golpe
     var pomodoroPreset: PomodoroPreset {
         get {
@@ -174,6 +191,9 @@ final class AppSettings {
         static let pomodoroWarning = "pomodoroWarning"
         static let pomodoroDailyGoal = "pomodoroDailyGoal"
         static let showPomodoroRing = "showPomodoroRing"
+        static let pomodoroSound = "pomodoroSound"
+        static let pomodoroDuckMusic = "pomodoroDuckMusic"
+        static let pomodoroDuckLevel = "pomodoroDuckLevel"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -213,6 +233,9 @@ final class AppSettings {
         pomodoroWarning = Self.pomodoroWarnings.contains(warning) ? warning : 30
         pomodoroDailyGoal = int(Key.pomodoroDailyGoal, Self.dailyGoals, 8)
         showPomodoroRing = defaults.object(forKey: Key.showPomodoroRing) as? Bool ?? true
+        pomodoroSound = defaults.object(forKey: Key.pomodoroSound) as? Bool ?? true
+        pomodoroDuckMusic = defaults.object(forKey: Key.pomodoroDuckMusic) as? Bool ?? true
+        pomodoroDuckLevel = int(Key.pomodoroDuckLevel, Self.duckLevels, 35)
     }
 }
 

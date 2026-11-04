@@ -18,6 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var media: NowPlayingStore?
     private var battery: BatteryMonitor?
     private var pomodoro: PomodoroStore?
+    private var pomodoroCue: PomodoroCue?
     private var toggleKey: GlobalHotKey?
     private var trackpad: TrackpadMonitor?
     private var workspaceObservers: [NSObjectProtocol] = []
@@ -63,7 +64,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         self.island = island
         battery = BatteryMonitor { state in island.batteryChanged(state) }
-        pomodoro.onEvent = { event in island.pomodoroEvent(event) }
+        // Cada evento del Pomodoro: el aviso de la isla, y el sonido y la música
+        let cue = PomodoroCue(settings: settings, media: media, pomodoro: pomodoro, ducker: VolumeDucker(), player: CuePlayer())
+        pomodoroCue = cue
+        pomodoro.onEvent = { event in
+            island.pomodoroEvent(event)
+            cue.handle(event)
+        }
 
         // Abrir la isla desde cualquier app, sin llevar el puntero: el atajo de los ajustes (⌥I) o 3 o 4 dedos hacia abajo
         observeToggleShortcut()
@@ -112,6 +119,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         media?.shutDown()
+        // Si se cierra con la música bajada por el Pomodoro, el volumen vuelve
+        pomodoroCue?.restoreNow()
     }
 
     // Registra el atajo de los ajustes y lo vuelve a registrar cada vez que cambia. Mientras se graba uno nuevo,

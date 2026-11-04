@@ -34,6 +34,9 @@ struct AppSettingsTests {
             #expect(settings.pomodoroWarning == 30)
             #expect(settings.pomodoroDailyGoal == 8)
             #expect(settings.showPomodoroRing)
+            #expect(settings.pomodoroSound)
+            #expect(settings.pomodoroDuckMusic)
+            #expect(settings.pomodoroDuckLevel == 35)
         }
     }
 

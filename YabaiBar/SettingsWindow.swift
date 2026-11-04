@@ -161,6 +161,21 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
             .disabled(!settings.showPomodoro)
+
+            Section {
+                Toggle("Sonidos", isOn: $settings.pomodoroSound)
+                Toggle("Bajar la música en el aviso", isOn: $settings.pomodoroDuckMusic)
+                Stepper(value: $settings.pomodoroDuckLevel, in: AppSettings.duckLevels, step: 5) {
+                    Text("Hasta el \(settings.pomodoroDuckLevel) % de tu volumen")
+                }
+                .disabled(!settings.pomodoroDuckMusic)
+            } header: {
+                Text("Avisos")
+            } footer: {
+                Text("En el aviso suena una nota de kalimba y, si suena música, el volumen baja hasta el final. Al terminar el foco suena un cuenco y al terminar el descanso, dos notas; la música vuelve a tu volumen. Si tocas el volumen mientras está bajado, se queda como lo dejes.")
+                    .foregroundStyle(.secondary)
+            }
+            .disabled(!settings.showPomodoro)
         }
         .formStyle(.grouped)
     }
