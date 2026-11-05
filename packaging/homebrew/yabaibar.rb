@@ -1,5 +1,5 @@
-# Plantilla del cask de jerickgm89/homebrew-tap. scripts/release.sh copia este archivo al tap la primera vez y,
-# en cada versión, actualiza `version` y `sha256` allí.
+# Plantilla del cask de jerickgm89/homebrew-tap. En cada versión, scripts/release.sh la copia al tap (sin estas dos
+# líneas) con su `version` y su `sha256`: los cambios hechos aquí también llegan al tap.
 cask "yabaibar" do
   version "0.0.0"
   sha256 "0000000000000000000000000000000000000000000000000000000000000000"
@@ -28,8 +28,10 @@ cask "yabaibar" do
   ]
 
   caveats <<~EOS
-    For now YabaiBar only supports the 2021 MacBook Pro with M1 Pro or M1 Max (14" and 16"),
-    with a notch. On M2 and later the notch has a different width and the island may look off.
+    YabaiBar measures the notch on your screen, so it adapts to any MacBook with a notch:
+    MacBook Pro from 2021 and MacBook Air from 2022. It has been tested on the 16" M1 Pro.
+    External displays, Macs without a notch and the OLED MacBook Pro with Dynamic Island
+    are not supported yet.
 
     It needs yabai installed and running. Read its wiki to configure it first:
       https://github.com/asmvik/yabai/wiki

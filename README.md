@@ -1,6 +1,6 @@
 # YabaiBar
 
-> **English summary.** YabaiBar is a native macOS app that turns the MacBook notch into a Dynamic Island showing your [yabai](https://github.com/asmvik/yabai) spaces with their app icons, what's playing (TIDAL or any Now Playing app), battery alerts and a Pomodoro. Install it with `brew install --cask jerickgm89/tap/yabaibar` or the DMG from [Releases](https://github.com/jerickgm89/yabaiDynamicIsland/releases). It needs yabai installed and running. **For now it only supports the 2021 MacBook Pro with M1 Pro or M1 Max (14" and 16")**, because the notch has a different width on M2 and later; support for other Macs is coming. It isn't notarized: the first time, go to System Settings › Privacy & Security › Open Anyway. The rest of this README is in Spanish.
+> **English summary.** YabaiBar is a native macOS app that turns the MacBook notch into a Dynamic Island showing your [yabai](https://github.com/asmvik/yabai) spaces with their app icons, what's playing (TIDAL or any Now Playing app), battery alerts and a Pomodoro. Install it with `brew install --cask jerickgm89/tap/yabaibar` or the DMG from [Releases](https://github.com/jerickgm89/yabaiDynamicIsland/releases). It needs yabai installed and running. **It works on any MacBook with a notch** (MacBook Pro from 2021, MacBook Air from 2022): it measures the notch on your screen, at any display scaling. It has been tested on the 16" M1 Pro; external displays and Macs without a notch are coming next. It isn't notarized: the first time, go to System Settings › Privacy & Security › Open Anyway. The rest of this README is in Spanish.
 
 Una isla alrededor del notch del Mac que muestra los espacios de [yabai](https://github.com/asmvik/yabai), con los íconos de sus apps, y resalta el activo. Es una app nativa de macOS escrita en Swift 6 con SwiftUI y AppKit.
 
@@ -87,7 +87,7 @@ Su diseño se inspira en [Atoll](https://github.com/Ebullioscopic/Atoll) (ver [A
 
 ## Requisitos
 
-- **Un MacBook Pro de 2021 con M1 Pro o M1 Max y notch**, de 14" o de 16" (ver [Compatibilidad y hoja de ruta](#compatibilidad-y-hoja-de-ruta)).
+- **Un MacBook con notch:** un MacBook Pro desde 2021 o un MacBook Air desde 2022 (ver [Compatibilidad y hoja de ruta](#compatibilidad-y-hoja-de-ruta)).
 - macOS 14 o posterior. Probado en macOS 27.
 - [yabai](https://github.com/asmvik/yabai) instalado y en marcha. Instálalo y configúralo leyendo antes [su wiki](https://github.com/asmvik/yabai/wiki):
 
@@ -121,7 +121,7 @@ Solo hay que hacerlo una vez. Las actualizaciones van firmadas con el mismo cert
 
 **Primeros pasos.** Al abrirse por primera vez, YabaiBar muestra una ventana que comprueba lo que necesita y dice cómo arreglar lo que falte:
 
-- si el Mac está soportado;
+- qué Mac es y cuánto mide su notch, con un botón para copiar esos datos si tienes que abrir un issue;
 - si yabai está instalado y en marcha;
 - las señales de yabai, que YabaiBar añade sola;
 - los atajos «Ir al escritorio N» de Mission Control y el permiso de Accesibilidad, para cambiar de escritorio con un clic;
@@ -131,18 +131,20 @@ Vuelve a abrirla con un clic en la isla › «Primeros pasos…».
 
 ## Compatibilidad y hoja de ruta
 
+La isla mide el notch en tu pantalla, así que se ajusta a cada modelo y a la escala que elijas en Ajustes › Pantallas. El ancho del notch en puntos cambia con la escala: en el MacBook Pro de 16" mide 220 pt con «Más espacio» y unos 185 con la escala por defecto.
+
 | | Estado |
 | --- | --- |
-| MacBook Pro de 2021 con M1 Pro o M1 Max, 14" y 16" (`MacBookPro18,1` a `18,4`) | Soportado. Probado en el de 16" |
-| MacBook Pro y MacBook Air con M2, M3, M4 o posterior | Aún no: el notch tiene otro ancho y la isla se descoloca |
-| Macs sin notch y monitores externos | Aún no |
+| MacBook Pro desde 2021: M1 Pro y M1 Max, M2 Pro y M2 Max, M3, M4 y M5 (con sus Pro y Max), de 14" y 16" | Soportado. Probado en el de 16" con M1 Pro |
+| MacBook Air desde 2022: M2, M3, M4 y M5, de 13" y 15" | Soportado, sin probar |
+| MacBook Pro OLED con Dynamic Island (finales de 2026) | Aún no: no tiene notch y macOS ya pone ahí su propia isla |
+| Monitores externos, Macs sin notch y la tapa cerrada | Aún no: la isla se dibuja sobre un notch de reserva |
 | Macs con Intel | No se publica |
 | macOS 14 a 26 | Sin probar |
 
-En otros Macs, la app se abre igual y «Primeros pasos» avisa de que aún no está soportado. Lo próximo:
+«Primeros pasos» dice qué Mac detectó y cuánto mide su notch. Si algo se ve descolocado en el tuyo, abre un [issue](https://github.com/jerickgm89/yabaiDynamicIsland/issues) y pega lo que copia el botón «Copiar datos». Lo próximo:
 
-- soporte para las demás generaciones con notch, ajustando la isla a cada ancho;
-- Macs sin notch y monitores externos;
+- monitores externos y Macs sin notch, con un notch decorativo y una isla en cada pantalla;
 - pruebas en macOS 14 a 26;
 - firma con Developer ID y notarización, para quitar el paso de «Abrir igualmente»;
 - entrar en el Homebrew oficial.

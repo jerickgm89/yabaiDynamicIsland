@@ -2,6 +2,12 @@
 
 Las versiones de YabaiBar. La 3.0.0 es la primera que se instala sin compilar: con Homebrew o con el DMG de [Releases](https://github.com/jerickgm89/yabaiDynamicIsland/releases). `scripts/release.sh` copia la sección de cada versión en las notas de su release.
 
+## [3.1.0] - 2026-11-04
+
+- **Todos los MacBook con notch:** MacBook Pro desde 2021 (de M1 Pro a M5 Max) y MacBook Air desde 2022 (de M2 a M5). La isla ya medía el notch en la pantalla, así que se ajusta a cada modelo y a cada escala de pantalla. Ahora «Primeros pasos» reconoce el modelo y dice cuánto mide su notch.
+- **«Copiar datos»** en «Primeros pasos»: el modelo, las pantallas y el notch medido, para pegarlos en un issue si algo se ve descolocado.
+- **Escalas de texto grande:** si el notch es muy bajo, el contenido de las alas y los botones de las esquinas se encogen para caber. Si hay muchos espacios en una pantalla estrecha, las tarjetas muestran menos íconos.
+
 ## [3.0.0] - 2026-11-04
 
 La primera versión instalable: ya no hace falta Xcode ni tocar el `yabairc`.

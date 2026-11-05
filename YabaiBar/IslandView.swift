@@ -61,6 +61,9 @@ final class IslandModel {
             + (hovering ? IslandView.hoverGrowth : 0)
     }
 
+    /// Escala del contenido de las alas: 1 salvo en los notch más bajos (escalas de texto grande)
+    var contentScale: CGFloat { IslandLayout.contentScale(forHeight: height) }
+
     var islandHeight: CGFloat {
         if isExpanded { return expanded.height }
         return height + (hovering ? IslandView.hoverGrowth : 0)
@@ -175,19 +178,23 @@ struct IslandView: View {
                         .foregroundStyle(.white.opacity(0.25))
                 }
             }
-            HStack(spacing: 4) {
+            HStack(spacing: IslandExpandedLayout.iconSpacing) {
                 if space.apps.isEmpty {
                     Text("Vacío")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.white.opacity(0.35))
                 } else {
-                    ForEach(space.apps.prefix(IslandExpandedLayout.maxIcons), id: \.pid) { app in
+                    // Con muchos espacios en una pantalla estrecha, las tarjetas se estrechan y caben menos íconos
+                    let shown = model.expanded.iconsShown(appCount: space.apps.count)
+                    ForEach(space.apps.prefix(shown), id: \.pid) { app in
                         Image(nsImage: model.icons[app.pid] ?? NSImage())
                             .resizable()
                             .frame(width: IslandExpandedLayout.iconSize, height: IslandExpandedLayout.iconSize)
                     }
-                    if space.apps.count > IslandExpandedLayout.maxIcons {
-                        Text("+\(space.apps.count - IslandExpandedLayout.maxIcons)")
+                    if space.apps.count > shown {
+                        // Entero aunque se coma parte del margen de la tarjeta: recortado salía "…"
+                        Text("+\(space.apps.count - shown)")
+                            .fixedSize()
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(.white.opacity(0.7))
                     }
@@ -195,7 +202,7 @@ struct IslandView: View {
             }
             .frame(height: IslandExpandedLayout.iconSize)
         }
-        .padding(10)
+        .padding(IslandExpandedLayout.cardPadding)
         .frame(width: model.expanded.cardWidth, height: IslandExpandedLayout.cardHeight, alignment: .topLeading)
         .background(shape.fill(.white.opacity(hovered ? 0.12 : 0.06)))
         .overlay(shape.strokeBorder(border, lineWidth: 1.5))
@@ -344,6 +351,8 @@ struct IslandView: View {
                 }
             }
         }
+        // En los notch bajos el contenido se encoge hacia el borde exterior para caber en el alto
+        .scaleEffect(model.contentScale, anchor: .leading)
         .padding(.leading, IslandLayout.outerPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -379,6 +388,7 @@ struct IslandView: View {
                 }
             }
         }
+        .scaleEffect(model.contentScale, anchor: .trailing)
         .padding(.trailing, IslandLayout.outerPadding)
         .frame(maxWidth: .infinity, alignment: .trailing)
     }

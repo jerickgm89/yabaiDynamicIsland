@@ -38,6 +38,16 @@ struct IslandLayout: Equatable {
     /// Durante el aviso de canción nueva las alas se abren al máximo, para que quepan la carátula y el título
     static let trackPeekWingWidth: CGFloat = maxWingWidth
     static let trackPeekArtworkSize: CGFloat = 24
+    /// Lo más alto del contenido de las alas: el título y el subtítulo de un aviso
+    static let closedContentHeight: CGFloat = 28
+
+    /// Escala del contenido de las alas para que quepa en el alto del notch, con 1 pt libre arriba y abajo. Con los
+    /// notch de 30 pt o más (los MacBook con su escala por defecto) es 1; con escalas de texto grande, menos
+    static func contentScale(forHeight height: CGFloat) -> CGFloat {
+        // Antes de medir la pantalla el alto es 0: sin esto, el contenido crecería desde 0 al aparecer
+        guard height > 0 else { return 1 }
+        return min(1, max(0, height - 2) / closedContentHeight)
+    }
 
     let active: SpaceSummary?
     let inactive: [SpaceSummary]
@@ -88,10 +98,19 @@ struct IslandExpandedLayout: Equatable {
     static let cardHeight: CGFloat = 70
     static let cardSpacing: CGFloat = 8
     static let padding: CGFloat = 14
+    /// Como en Atoll, la isla abierta deja al menos 30 pt libres a cada lado de la pantalla
+    static let screenMargin: CGFloat = 30
     /// Separación entre la franja del notch y las tarjetas
     static let gapBelowNotch: CGFloat = 8
     static let maxIcons = 4
     static let iconSize: CGFloat = 22
+    static let iconSpacing: CGFloat = 4
+    /// Margen interior de cada tarjeta
+    static let cardPadding: CGFloat = 10
+    /// El "+n" de una tarjeta con más apps de las que caben ("+2" a 10 pt mide 13,1)
+    static let overflowWidth: CGFloat = 14
+    /// Lo que el "+n" puede comerse del margen derecho de la tarjeta: así caben 4 íconos y el "+n" en 132 pt
+    static let overflowIntoPadding: CGFloat = 6
     // La franja "Ahora suena": carátula a la izquierda, título y progreso, y los tres botones a la derecha
     static let mediaGap: CGFloat = 10
     static let mediaHeight: CGFloat = 52
@@ -130,6 +149,27 @@ struct IslandExpandedLayout: Equatable {
     /// Ancho de las franjas del Pomodoro y de "Ahora suena": todo el cuerpo menos los márgenes
     var mediaWidth: CGFloat { bodyWidth - 2 * Self.padding }
 
+    /// Los íconos de una tarjeta con esas apps: hasta 4 con el ancho normal, menos si hay tantos espacios que las
+    /// tarjetas se estrechan. Si no caben todas, se deja sitio al "+n"
+    func iconsShown(appCount: Int) -> Int {
+        let step = Self.iconSize + Self.iconSpacing
+        let row = cardWidth - 2 * Self.cardPadding + Self.iconSpacing
+        let all = min(Self.maxIcons, Int(row / step))
+        if appCount <= all { return appCount }
+        let beside = row + Self.overflowIntoPadding - Self.iconSpacing - Self.overflowWidth
+        return min(Self.maxIcons, max(1, Int(beside / step)))
+    }
+
+    /// El cuerpo más ancho que cabe en una pantalla de ese ancho, con las esquinas superiores de la isla abierta
+    static func maxBodyWidth(screenWidth: CGFloat, topRadius: CGFloat) -> CGFloat {
+        screenWidth - 2 * screenMargin - 2 * topRadius
+    }
+
+    /// Los botones de las esquinas caben en la franja del notch, aunque sea baja
+    static func cornerButtonSize(topHeight: CGFloat) -> CGFloat {
+        min(cornerButtonSize, topHeight - 4)
+    }
+
     /// `minBodyWidth` es lo que ocupan el notch y las alas en la franja de arriba. Con algún botón en las esquinas,
     /// el cuerpo deja sitio a cada lado para que no tapen las alas
     init(
@@ -157,15 +197,17 @@ struct IslandExpandedLayout: Equatable {
     /// Dónde va el botón de mantener despierto, en coordenadas de la isla (origen arriba a la izquierda)
     func keepAwakeFrame(islandWidth: CGFloat, topHeight: CGFloat) -> CGRect? {
         guard hasKeepAwake else { return nil }
-        let x = (islandWidth + bodyWidth) / 2 - Self.padding - Self.cornerButtonSize
-        return CGRect(x: x, y: (topHeight - Self.cornerButtonSize) / 2, width: Self.cornerButtonSize, height: Self.cornerButtonSize)
+        let size = Self.cornerButtonSize(topHeight: topHeight)
+        let x = (islandWidth + bodyWidth) / 2 - Self.padding - size
+        return CGRect(x: x, y: (topHeight - size) / 2, width: size, height: size)
     }
 
     /// Dónde va el botón del Pomodoro, arriba a la izquierda, simétrico al de mantener despierto
     func pomodoroButtonFrame(islandWidth: CGFloat, topHeight: CGFloat) -> CGRect? {
         guard hasPomodoroButton else { return nil }
+        let size = Self.cornerButtonSize(topHeight: topHeight)
         let x = (islandWidth - bodyWidth) / 2 + Self.padding
-        return CGRect(x: x, y: (topHeight - Self.cornerButtonSize) / 2, width: Self.cornerButtonSize, height: Self.cornerButtonSize)
+        return CGRect(x: x, y: (topHeight - size) / 2, width: size, height: size)
     }
 
     /// Dónde va la franja del Pomodoro, entre las tarjetas y la música

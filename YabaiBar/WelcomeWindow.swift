@@ -25,8 +25,14 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
         window.makeKeyAndOrderFront(nil)
     }
 
+    /// Lo que mide la ventana si cabe; con escalas de texto grande se acorta a la pantalla y la lista hace scroll
+    private static let preferredHeight: CGFloat = 820
+    private static let titleBarHeight: CGFloat = 28
+
     private func makeWindow() -> NSWindow {
-        let view = WelcomeView(settings: settings, status: status) { [weak self] in self?.window?.close() }
+        let available = (NSScreen.main?.visibleFrame.height).map { $0 - Self.titleBarHeight } ?? Self.preferredHeight
+        let height = min(Self.preferredHeight, available)
+        let view = WelcomeView(settings: settings, status: status, height: height) { [weak self] in self?.window?.close() }
         let window = NSWindow(contentViewController: NSHostingController(rootView: view))
         window.title = "Primeros pasos"
         window.styleMask = [.titled, .closable]
@@ -62,6 +68,8 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
 @Observable
 final class SetupStatus {
     private(set) var rows: [SetupChecklist.Row] = []
+    /// Lo que copia «Copiar datos» en la fila del Mac
+    private(set) var screenReport = ""
 
     @ObservationIgnored private let settings: AppSettings
     @ObservationIgnored private let store: SpacesStore
@@ -98,8 +106,10 @@ final class SetupStatus {
         // Si acabas de arrancar yabai, el error se queda hasta el siguiente refresco
         if store.lastError != nil { store.requestRefresh() }
         let desktops = store.spaces.map(\.index)
+        let screens = NSScreen.screens.map(Self.describe)
         let inputs = SetupChecklist.Inputs(
-            model: Self.model,
+            model: MacModels.current,
+            screens: screens,
             yabaiInstalled: FileManager.default.isExecutableFile(atPath: YabaiClient.resolvedPath()),
             yabaiError: store.lastError,
             signalsEnabled: settings.autoYabaiSignals,
@@ -111,6 +121,20 @@ final class SetupStatus {
         )
         let newRows = SetupChecklist.rows(for: inputs)
         if newRows != rows { rows = newRows }
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        let report = SetupChecklist.screenReport(
+            model: MacModels.current, appVersion: version,
+            system: "macOS \(ProcessInfo.processInfo.operatingSystemVersionString)", screens: screens
+        )
+        if report != screenReport { screenReport = report }
+    }
+
+    private static func describe(_ screen: NSScreen) -> SetupChecklist.Screen {
+        let geometry = screen.notchGeometry
+        return SetupChecklist.Screen(
+            name: screen.localizedName, size: screen.frame.size, scale: screen.backingScaleFactor,
+            notch: geometry.hasNotch ? geometry.notch.size : nil, menuBarHeight: screen.menuBarHeight
+        )
     }
 
     func copy(_ text: String) {
@@ -130,20 +154,12 @@ final class SetupStatus {
         launchAtLogin.toggle()
         update()
     }
-
-    /// `hw.model`, por ejemplo "MacBookPro18,1"
-    static let model: String = {
-        var size = 0
-        guard sysctlbyname("hw.model", nil, &size, nil, 0) == 0, size > 0 else { return "" }
-        var buffer = [UInt8](repeating: 0, count: size)
-        guard sysctlbyname("hw.model", &buffer, &size, nil, 0) == 0 else { return "" }
-        return String(decoding: buffer.prefix { $0 != 0 }, as: UTF8.self)
-    }()
 }
 
 private struct WelcomeView: View {
     @Bindable var settings: AppSettings
     let status: SetupStatus
+    let height: CGFloat
     let close: () -> Void
     @State private var copied: SetupChecklist.Item?
 
@@ -198,7 +214,7 @@ private struct WelcomeView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
         }
-        .frame(width: 540, height: 780)
+        .frame(width: 540, height: height)
     }
 
     private func icon(for status: SetupChecklist.Status) -> some View {
@@ -213,6 +229,8 @@ private struct WelcomeView: View {
     @ViewBuilder
     private func action(for row: SetupChecklist.Row) -> some View {
         switch row.action {
+        case .copyScreenReport?:
+            copyButton(status.screenReport, for: row.item, title: "Copiar datos")
         case .installYabai?:
             HStack {
                 copyButton(SetupChecklist.installYabai, for: row.item)
@@ -235,8 +253,8 @@ private struct WelcomeView: View {
         }
     }
 
-    private func copyButton(_ text: String, for item: SetupChecklist.Item) -> some View {
-        Button(copied == item ? "Copiado" : "Copiar") {
+    private func copyButton(_ text: String, for item: SetupChecklist.Item, title: String = "Copiar") -> some View {
+        Button(copied == item ? "Copiado" : title) {
             status.copy(text)
             copied = item
             Task {

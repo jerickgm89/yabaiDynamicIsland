@@ -23,6 +23,8 @@ enum SetupChecklist {
 
     /// El control de la fila
     enum Action: Equatable {
+        /// Copiar los datos del Mac y de sus pantallas, para pegarlos en un issue
+        case copyScreenReport
         /// Copiar el comando de Homebrew y abrir la wiki de yabai
         case installYabai
         /// Copiar `yabai --start-service`
@@ -42,9 +44,22 @@ enum SetupChecklist {
         var action: Action?
     }
 
+    /// Lo que se sabe de una pantalla conectada, en puntos
+    struct Screen: Equatable {
+        var name: String
+        var size: CGSize
+        /// `backingScaleFactor`
+        var scale: CGFloat
+        /// El notch medido (NotchGeometry); nil si la pantalla no tiene
+        var notch: CGSize?
+        /// Lo que ocupa la barra de menús; 0 si se oculta sola
+        var menuBarHeight: CGFloat
+    }
+
     struct Inputs: Equatable {
         /// `hw.model`, por ejemplo "MacBookPro18,1"
         var model: String
+        var screens: [Screen]
         var yabaiInstalled: Bool
         /// El último error de yabai; nil si respondió
         var yabaiError: YabaiError?
@@ -57,26 +72,13 @@ enum SetupChecklist {
         var launchAtLogin: Bool
     }
 
-    /// Los MacBook Pro de 2021 con M1 Pro o M1 Max y notch, los únicos soportados por ahora: en el M2 y posteriores
-    /// el notch tiene otro ancho
-    static let supportedModels: [String: String] = [
-        "MacBookPro18,1": "MacBook Pro de 16\" con M1 Pro (2021)",
-        "MacBookPro18,2": "MacBook Pro de 16\" con M1 Max (2021)",
-        "MacBookPro18,3": "MacBook Pro de 14\" con M1 Pro (2021)",
-        "MacBookPro18,4": "MacBook Pro de 14\" con M1 Max (2021)",
-    ]
-
     static let installYabai = "brew install asmvik/formulae/yabai"
     static let startYabai = "yabai --start-service"
     static let yabaiWiki = URL(string: "https://github.com/asmvik/yabai/wiki")!
 
-    static func isSupported(model: String) -> Bool {
-        supportedModels[model] != nil
-    }
-
     static func rows(for inputs: Inputs) -> [Row] {
         [
-            modelRow(inputs.model),
+            modelRow(inputs),
             inputs.yabaiInstalled
                 ? Row(
                     item: .yabaiInstalled, status: .ok, title: "yabai instalado",
@@ -110,14 +112,49 @@ enum SetupChecklist {
         ]
     }
 
-    private static func modelRow(_ model: String) -> Row {
-        if let name = supportedModels[model] {
-            return Row(item: .model, status: .ok, title: "Mac soportado", detail: name)
+    // Cualquier Mac con notch vale: la isla mide el notch en la pantalla. El catálogo solo pone el nombre
+    private static func modelRow(_ inputs: Inputs) -> Row {
+        let known = MacModels.model(for: inputs.model)
+        let mac = known?.name ?? (inputs.model.isEmpty ? "Modelo desconocido" : "Modelo \(inputs.model)")
+        if let notch = inputs.screens.lazy.compactMap(\.notch).first {
+            let tested = known == nil ? ", aún sin probar" : ""
+            return Row(
+                item: .model, status: .ok, title: "Mac con notch",
+                detail: "\(mac)\(tested). La isla se ajusta a tu notch: \(Int(notch.width.rounded())) × \(Int(notch.height.rounded())) pt con la escala de pantalla actual.",
+                action: .copyScreenReport
+            )
         }
+        let closedLid = known?.hasNotch == true ? " con la tapa cerrada" : ""
         return Row(
-            item: .model, status: .warning, title: "Este Mac aún no está soportado",
-            detail: "\(model.isEmpty ? "Este modelo" : model): por ahora YabaiBar solo es para los MacBook Pro M1 Pro o M1 Max (2021) con notch. En otros Macs el notch tiene otro ancho y la isla puede verse descolocada. El soporte llegará en próximas versiones."
+            item: .model, status: .warning, title: "Pantalla sin notch",
+            detail: "\(mac)\(closedLid): sin notch, la isla se dibuja sobre uno de reserva y puede verse descolocada. Los monitores y los Mac sin notch llegarán en una próxima versión.",
+            action: .copyScreenReport
         )
+    }
+
+    /// Los datos del Mac y de cada pantalla que copia «Copiar datos», para pegarlos en un issue. Sin nada personal
+    static func screenReport(model: String, appVersion: String, system: String, screens: [Screen]) -> String {
+        let name = MacModels.model(for: model)?.name ?? "modelo no reconocido"
+        let header = [
+            "YabaiBar \(appVersion) · \(system)",
+            "Mac: \(model.isEmpty ? "desconocido" : model) (\(name))",
+        ]
+        let lines = screens.enumerated().map { offset, screen in
+            [
+                "Pantalla \(offset + 1): \(screen.name)",
+                "\(number(screen.size.width)) × \(number(screen.size.height)) pt",
+                "×\(number(screen.scale))",
+                screen.notch.map { "notch \(number($0.width)) × \(number($0.height)) pt" } ?? "sin notch",
+                "barra \(number(screen.menuBarHeight)) pt",
+            ].joined(separator: " · ")
+        }
+        return (header + lines).joined(separator: "\n")
+    }
+
+    // Entero si lo es; si no, con un decimal ("184.5")
+    private static func number(_ value: CGFloat) -> String {
+        let rounded = (value * 10).rounded() / 10
+        return rounded == rounded.rounded() ? String(Int(rounded)) : String(format: "%.1f", Double(rounded))
     }
 
     private static func runningRow(_ inputs: Inputs) -> Row {

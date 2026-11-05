@@ -194,15 +194,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Logger.app.info("Aviso: yabaibar://refresh")
                 store?.requestRefresh()
             #if DEBUG
-            case "snapshot" where url.query() == "bienvenida":
-                welcome?.saveSnapshot()
             case "snapshot":
-                let peek: IslandPeek? = switch url.query() {
-                case "aviso": .track
-                case "aviso-pomodoro": .pomodoro(PomodoroPeek(phase: .shortBreak, kind: .started(minutes: 5)))
-                default: nil
+                // Opciones: abierta, hover, aviso, aviso-pomodoro o bienvenida, y notch=185x32&pantalla=1512x982
+                // para simular otro Mac (por ejemplo, "abierta&notch=185x32&pantalla=1512x982")
+                let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+                let flags = Set(items.map(\.name))
+                if flags.contains("bienvenida") {
+                    welcome?.saveSnapshot()
+                    continue
                 }
-                island?.saveSnapshot(expanded: url.query() == "abierta", hoveringCard: url.query() == "hover", peek: peek)
+                let peek: IslandPeek? = flags.contains("aviso") ? .track
+                    : flags.contains("aviso-pomodoro") ? .pomodoro(PomodoroPeek(phase: .shortBreak, kind: .started(minutes: 5)))
+                    : nil
+                let value = { (name: String) in items.first { $0.name == name }?.value.flatMap(Self.size) }
+                let simulated = value("notch").flatMap { notch in value("pantalla").map { (screen: $0, notch: notch) } }
+                island?.saveSnapshot(
+                    expanded: flags.contains("abierta"), hoveringCard: flags.contains("hover"), peek: peek,
+                    simulating: simulated
+                )
             case "stress":
                 island?.stressTest()
             case "pomodoro-demo":
@@ -213,4 +222,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
     }
+
+    #if DEBUG
+    /// "185x32" → 185 × 32
+    private static func size(_ text: String) -> CGSize? {
+        let parts = text.split(separator: "x").compactMap { Double($0) }
+        return parts.count == 2 ? CGSize(width: parts[0], height: parts[1]) : nil
+    }
+    #endif
 }

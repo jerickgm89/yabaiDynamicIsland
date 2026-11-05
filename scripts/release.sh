@@ -167,7 +167,7 @@ Se va a:
   1. poner $version (compilación $build_number) en project.yml y hacer el commit "Versión $version";
   2. crear el tag $tag y subir main y el tag a origin;
   3. crear el release $tag en $REPO con $(basename "$dmg") y las notas de $notes;
-  4. actualizar Casks/$CASK.rb en $TAP_REPO (version y sha256) y subirlo.
+  4. rehacer Casks/$CASK.rb en $TAP_REPO desde packaging/ (con version y sha256) y subirlo.
 EOF
 if [[ "$mode" != "--yes" ]]; then
   read -r -p "Escribe \"publicar\" para seguir: " answer
@@ -197,10 +197,9 @@ if ! gh repo clone "$TAP_REPO" "$tap_dir" -- --quiet 2>/dev/null; then
   exit 0
 fi
 cask_file="$tap_dir/Casks/$CASK.rb"
-if [[ ! -f "$cask_file" ]]; then
-  mkdir -p "$(dirname "$cask_file")"
-  sed '1,2d' packaging/homebrew/$CASK.rb > "$cask_file"
-fi
+# La plantilla manda: así los cambios de los avisos (caveats) también llegan al tap
+mkdir -p "$(dirname "$cask_file")"
+sed '1,2d' packaging/homebrew/$CASK.rb > "$cask_file"
 sed -i '' -E \
   -e "s/^(  version )\"[^\"]*\"/\1\"$version\"/" \
   -e "s/^(  sha256 )\"[^\"]*\"/\1\"$sha\"/" "$cask_file"

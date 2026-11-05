@@ -26,6 +26,19 @@ struct NotchGeometry: Equatable {
         }
     }
 
+    /// Una pantalla de ese tamaño con un notch de ese tamaño en el centro, como la de cualquier MacBook con notch.
+    /// Para los tests y para simular otros Macs en el snapshot
+    static func centered(screen: CGSize, notch: CGSize) -> NotchGeometry {
+        let side = (screen.width - notch.width) / 2
+        let y = screen.height - notch.height
+        return NotchGeometry(
+            screenFrame: CGRect(origin: .zero, size: screen),
+            topLeftArea: CGRect(x: 0, y: y, width: side, height: notch.height),
+            topRightArea: CGRect(x: side + notch.width, y: y, width: side, height: notch.height),
+            topInset: notch.height
+        )
+    }
+
     /// Ancho del cuerpo central de la isla: el notch más la costura de cada lado
     var centerWidth: CGFloat { notch.width + 2 * Self.seamOverlap }
 

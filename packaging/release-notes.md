@@ -1,4 +1,4 @@
-> **English:** YabaiBar is a Dynamic Island around the MacBook notch that shows your [yabai](https://github.com/asmvik/yabai) spaces, what's playing and a Pomodoro. For now it only supports the 2021 MacBook Pro with M1 Pro or M1 Max, with a notch. Install with `brew install --cask jerickgm89/tap/yabaibar` or the DMG below; it needs yabai installed and running. The first time, macOS blocks it: System Settings › Privacy & Security › Open Anyway.
+> **English:** YabaiBar is a Dynamic Island around the MacBook notch that shows your [yabai](https://github.com/asmvik/yabai) spaces, what's playing and a Pomodoro. It works on any MacBook with a notch (MacBook Pro from 2021, MacBook Air from 2022): it measures the notch on your screen. Install with `brew install --cask jerickgm89/tap/yabaibar` or the DMG below; it needs yabai installed and running. The first time, macOS blocks it: System Settings › Privacy & Security › Open Anyway.
 
 {{CHANGES}}
 
@@ -27,7 +27,9 @@ Si prefieres la terminal: `xattr -dr com.apple.quarantine /Applications/YabaiBar
 
 ## Compatibilidad
 
-- **Soportado:** MacBook Pro de 2021 con M1 Pro o M1 Max (14" y 16"), con notch. Probado en el de 16".
-- **Aún no:** M2, M3, M4 y posteriores, porque el notch tiene otro ancho y la isla se descoloca; Macs sin notch; monitores externos; Intel. El soporte llegará en próximas versiones.
+- **Soportado:** cualquier MacBook con notch, MacBook Pro desde 2021 y MacBook Air desde 2022. La isla mide el notch de tu pantalla con cualquier escala. Probado en el MacBook Pro de 16" con M1 Pro; en los demás, «Primeros pasos» dice qué modelo y qué notch detectó.
+- **Aún no:** monitores externos, Macs sin notch y la tapa cerrada (la isla se dibuja sobre un notch de reserva), el MacBook Pro OLED con Dynamic Island e Intel.
+
+Si algo se ve descolocado en tu Mac, abre un [issue](https://github.com/jerickgm89/yabaiDynamicIsland/issues) con lo que copia «Primeros pasos» › «Copiar datos».
 
 SHA-256 de `YabaiBar-{{VERSION}}.dmg`: `{{SHA256}}`

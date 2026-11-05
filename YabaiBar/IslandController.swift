@@ -148,16 +148,26 @@ final class IslandController {
         }
     }
 
+    // El notch se mide en la pantalla, así que vale para cualquier Mac con notch y cualquier escala de pantalla
     private func updateGeometry() {
         guard let screen = Self.notchScreen() else { return }
+        let newGeometry = screen.notchGeometry
+        if newGeometry != geometry || screen.frame.width != screenWidth {
+            let notch = newGeometry.notch.size
+            let kind = newGeometry.hasNotch ? "notch" : "sin notch, uno de reserva de"
+            let measure = "\(Self.points(notch.width)) × \(Self.points(notch.height)) pt"
+            let size = "\(Int(screen.frame.width)) × \(Int(screen.frame.height))"
+            let description = "Pantalla \(screen.displayUUID ?? "?"): \(kind) \(measure) en \(size) (\(MacModels.current))"
+            Logger.app.info("\(description, privacy: .public)")
+        }
         screenWidth = screen.frame.width
         container.canvasSize = CGSize(width: screen.frame.width, height: Self.canvasHeight)
-        geometry = NotchGeometry(
-            screenFrame: screen.frame,
-            topLeftArea: screen.auxiliaryTopLeftArea,
-            topRightArea: screen.auxiliaryTopRightArea,
-            topInset: screen.safeAreaInsets.top
-        )
+        geometry = newGeometry
+    }
+
+    // Las medidas del notch pueden no ser enteras con algunas escalas de pantalla
+    private static func points(_ value: CGFloat) -> String {
+        value == value.rounded() ? String(Int(value)) : String(format: "%.1f", Double(value))
     }
 
     private func render() {
@@ -276,12 +286,15 @@ final class IslandController {
         settleWindow()
     }
 
-    private func expandedLayout(for spaces: [SpaceSummary], geometry: NotchGeometry) -> IslandExpandedLayout {
+    private func expandedLayout(
+        for spaces: [SpaceSummary], geometry: NotchGeometry, screenWidth: CGFloat? = nil
+    ) -> IslandExpandedLayout {
         IslandExpandedLayout(
             spaces: spaces,
             minBodyWidth: geometry.centerWidth + 2 * currentLayout.wingWidth,
-            // Como en Atoll, la isla abierta deja al menos 30 pt libres a cada lado de la pantalla
-            maxBodyWidth: screenWidth - 60 - 2 * IslandView.openTopRadius,
+            maxBodyWidth: IslandExpandedLayout.maxBodyWidth(
+                screenWidth: screenWidth ?? self.screenWidth, topRadius: IslandView.openTopRadius
+            ),
             topHeight: geometry.notch.height,
             hasMedia: currentHasMedia,
             hasKeepAwake: settings.keepAwakeButton,
@@ -737,8 +750,31 @@ final class IslandController {
 
     // La pantalla integrada con notch; si no hay ninguna, la principal
     private static func notchScreen() -> NSScreen? {
-        NSScreen.screens.first { $0.safeAreaInsets.top > 0 } ?? NSScreen.main
+        NSScreen.withNotch ?? NSScreen.main
     }
+}
+
+extension NSScreen {
+    /// La pantalla integrada con notch, si está encendida (con la tapa cerrada no aparece)
+    static var withNotch: NSScreen? { screens.first { $0.safeAreaInsets.top > 0 } }
+
+    /// El notch medido en esta pantalla, en cualquier Mac y con cualquier escala; uno de reserva si no tiene
+    var notchGeometry: NotchGeometry {
+        NotchGeometry(
+            screenFrame: frame, topLeftArea: auxiliaryTopLeftArea, topRightArea: auxiliaryTopRightArea,
+            topInset: safeAreaInsets.top
+        )
+    }
+
+    /// El UUID de la pantalla, el mismo que da yabai en `--displays`
+    var displayUUID: String? {
+        guard let id = deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID,
+              let uuid = CGDisplayCreateUUIDFromDisplayID(id)?.takeRetainedValue() else { return nil }
+        return CFUUIDCreateString(nil, uuid) as String
+    }
+
+    /// Lo que ocupa la barra de menús; 0 si se oculta sola
+    var menuBarHeight: CGFloat { max(0, frame.maxY - visibleFrame.maxY) }
 }
 
 // Lienzo de tamaño fijo, centrado y pegado arriba, sobre el que SwiftUI dibuja la isla; la ventana solo lo
@@ -867,12 +903,26 @@ extension IslandController {
     /// Guarda la isla como PNG ampliado y sobre un fondo gris, para revisarla sin mirar la pantalla.
     /// Con `expanded`, la dibuja abierta un instante (se restaura enseguida, sin llegar a la pantalla);
     /// con `hoveringCard`, además con el puntero sobre la primera tarjeta inactiva a la que se puede ir.
-    /// Con `peek`, la isla cerrada con ese aviso (el de canción nueva, solo si suena algo). Las barras de la música
-    /// y el anillo del Pomodoro son capas de Core Animation y ImageRenderer no las dibuja
-    func saveSnapshot(expanded: Bool = false, hoveringCard: Bool = false, peek: IslandPeek? = nil) {
+    /// Con `peek`, la isla cerrada con ese aviso (el de canción nueva, solo si suena algo). Con `simulating`, la
+    /// isla con el notch y la pantalla de otro Mac, para revisarla sin tenerlo. Las barras de la música y el anillo
+    /// del Pomodoro son capas de Core Animation y ImageRenderer no las dibuja
+    func saveSnapshot(
+        expanded: Bool = false, hoveringCard: Bool = false, peek: IslandPeek? = nil,
+        simulating simulated: (screen: CGSize, notch: CGSize)? = nil
+    ) {
         let wasExpanded = model.isExpanded
         let wasHovered = model.hoveredSpace
         let wasPeek = model.peek
+        let wasGeometry = (model.centerWidth, model.height, model.expanded)
+        if let simulated {
+            let geometry = NotchGeometry.centered(screen: simulated.screen, notch: simulated.notch)
+            model.centerWidth = geometry.centerWidth
+            model.height = geometry.notch.height
+            model.expanded = expandedLayout(for: currentSpaces, geometry: geometry, screenWidth: simulated.screen.width)
+            let notch = "\(Int(simulated.notch.width)) × \(Int(simulated.notch.height)) pt"
+            let screen = "\(Int(simulated.screen.width)) × \(Int(simulated.screen.height))"
+            Logger.app.info("Snapshot simulado: notch de \(notch, privacy: .public) en \(screen, privacy: .public)")
+        }
         model.isExpanded = expanded || hoveringCard || wasExpanded
         if model.isExpanded { model.shortcutLabels = focuser.labels(for: currentSpaces.map(\.index)) }
         if hoveringCard {
@@ -883,6 +933,7 @@ extension IslandController {
             model.isExpanded = wasExpanded
             model.hoveredSpace = wasHovered
             model.peek = wasPeek
+            (model.centerWidth, model.height, model.expanded) = wasGeometry
         }
         let size = CGSize(width: model.islandWidth + 2 * Self.shadowMargin, height: model.islandHeight + Self.shadowMargin)
         let content = hosting.rootView
