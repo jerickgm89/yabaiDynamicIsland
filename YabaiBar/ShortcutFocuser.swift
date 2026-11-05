@@ -20,7 +20,6 @@ final class ShortcutFocuser {
         case needsPermission
     }
 
-    private static let hotkeysDomain = "com.apple.symbolichotkeys" as CFString
     private static let accessibilitySettings = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
 
     private var promptedForAccess = false
@@ -64,20 +63,20 @@ final class ShortcutFocuser {
         return true
     }
 
-    // Se sincroniza antes de leer para ver los cambios hechos en Ajustes con la app abierta
-    private static func currentHotkeys() -> [String: Any] {
-        CFPreferencesAppSynchronize(hotkeysDomain)
-        return CFPreferencesCopyAppValue("AppleSymbolicHotKeys" as CFString, hotkeysDomain) as? [String: Any] ?? [:]
+    /// AppleSymbolicHotKeys de com.apple.symbolichotkeys. Se sincroniza antes de leer para ver los cambios hechos en
+    /// Ajustes con la app abierta
+    nonisolated static func currentHotkeys() -> [String: Any] {
+        let domain = SymbolicHotKeysWriter.domain as CFString
+        CFPreferencesAppSynchronize(domain)
+        return CFPreferencesCopyAppValue(SymbolicHotKeysWriter.key as CFString, domain) as? [String: Any] ?? [:]
     }
 
     /// Lee el atajo de AppleSymbolicHotKeys: los ids 118...126 son "Ir al escritorio 1...9" y
     /// `parameters` es [carácter, código de tecla, máscara de modificadores].
     nonisolated static func shortcut(forDesktop index: Int, in hotkeys: [String: Any]) -> Shortcut? {
-        guard (1...9).contains(index),
-              let entry = hotkeys[String(117 + index)] as? [String: Any],
-              entry["enabled"] as? Bool == true,
-              let value = entry["value"] as? [String: Any],
-              let parameters = value["parameters"] as? [Int], parameters.count == 3 else { return nil }
+        guard DesktopShortcuts.desktops.contains(index),
+              let parameters = DesktopShortcuts.enabledParameters(hotkeys[DesktopShortcuts.id(forDesktop: index)])
+        else { return nil }
         // La máscara usa los mismos bits que CGEventFlags (⇧ 1<<17, ⌃ 1<<18, ⌥ 1<<19, ⌘ 1<<20)
         let flags = CGEventFlags(rawValue: UInt64(parameters[2]))
         return Shortcut(keyCode: CGKeyCode(parameters[1]), flags: flags, label: label(character: parameters[0], flags: flags))

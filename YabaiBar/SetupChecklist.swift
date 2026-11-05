@@ -30,8 +30,8 @@ enum SetupChecklist {
         /// Copiar `yabai --start-service`
         case startYabai
         case signalsToggle
-        /// Abrir Ajustes › Teclado
-        case keyboardSettings
+        /// Añadir los atajos «Ir al escritorio N» que faltan (DesktopShortcutAssistant)
+        case addDesktopShortcuts
         case requestAccessibility
         case launchAtLoginToggle
     }
@@ -181,24 +181,24 @@ enum SetupChecklist {
     private static func shortcutsRow(_ inputs: Inputs) -> Row {
         let title = "Atajos «Ir al escritorio»"
         // ShortcutFocuser solo conoce los atajos de los escritorios 1 a 9
-        let desktops = inputs.desktops.isEmpty ? [1, 2] : inputs.desktops.filter { (1...9).contains($0) }
+        let desktops = inputs.desktops.isEmpty ? [1, 2] : inputs.desktops.filter(DesktopShortcuts.desktops.contains)
         let missing = desktops.filter { !inputs.desktopsWithShortcut.contains($0) }
         if missing.isEmpty {
             return Row(item: .desktopShortcuts, status: .ok, title: title, detail: "Todos tus escritorios tienen atajo.")
         }
-        let instructions = "Actívalos en Ajustes › Teclado › Atajos de teclado › Mission Control."
+        let instructions = "YabaiBar puede añadirlos, con el mismo modificador que los demás."
         if missing.count == desktops.count {
             return Row(
                 item: .desktopShortcuts, status: .missing, title: title,
                 detail: "Ningún escritorio tiene atajo, así que un clic en una tarjeta no cambia de escritorio. \(instructions)",
-                action: .keyboardSettings
+                action: .addDesktopShortcuts
             )
         }
-        let list = missing.map(String.init).joined(separator: ", ")
+        let list = DesktopShortcuts.list(missing.map(String.init))
         return Row(
             item: .desktopShortcuts, status: .warning, title: title,
             detail: "Sin atajo: \(missing.count == 1 ? "el escritorio" : "los escritorios") \(list). \(instructions)",
-            action: .keyboardSettings
+            action: .addDesktopShortcuts
         )
     }
 

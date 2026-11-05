@@ -33,6 +33,7 @@ Su diseño se inspira en [Atoll](https://github.com/Ebullioscopic/Atoll) (ver [A
 - Al llegar al escritorio nuevo, las alas vuelven a salir con el contenido actualizado.
 - La velocidad de las alas se cambia en los ajustes.
 - Con "Reducir movimiento" activado, el contenido solo se funde.
+- En Mission Control la isla se oculta, como la barra de menús, y al cerrarlo vuelve con los escritorios al día, también los que crees o quites allí.
 
 **Abierta (al pasar el puntero)**
 
@@ -124,7 +125,7 @@ Solo hay que hacerlo una vez. Las actualizaciones van firmadas con el mismo cert
 - qué Mac es y cuánto mide su notch, con un botón para copiar esos datos si tienes que abrir un issue;
 - si yabai está instalado y en marcha;
 - las señales de yabai, que YabaiBar añade sola;
-- los atajos «Ir al escritorio N» de Mission Control y el permiso de Accesibilidad, para cambiar de escritorio con un clic;
+- los atajos «Ir al escritorio N» de Mission Control (con un botón para añadir los que falten) y el permiso de Accesibilidad, para cambiar de escritorio con un clic;
 - Iniciar al arrancar.
 
 Vuelve a abrirla con un clic en la isla › «Primeros pasos…».
@@ -188,7 +189,12 @@ shift + alt - 1 : yabai -m window --space 1; notifyutil -p com.jerickdev.yabaiba
 
 Al pulsar una tarjeta, YabaiBar pulsa por ti el atajo "Ir al escritorio N" de Mission Control, así que el cambio usa la animación nativa de macOS. Para que funcione:
 
-1. Activa los atajos en Ajustes del Sistema › Teclado › Atajos de teclado › Mission Control. Las tarjetas de los escritorios sin atajo muestran "Sin atajo".
+1. Cada escritorio necesita su atajo en Ajustes del Sistema › Teclado › Atajos de teclado › Mission Control. **YabaiBar puede añadirlos por ti:**
+   - Cuando creas un escritorio del 1 al 9 sin atajo, pregunta si añade el que le toca, con el mismo modificador que los demás (⌥5 si los otros son ⌥1 a ⌥4).
+   - Con «Añadir siempre», los escritorios que crees después lo reciben solos, y la isla lo dice unos segundos.
+   - También puedes pulsar la tarjeta «Añadir atajo» de un escritorio o el botón de «Primeros pasos».
+   - Solo añade los que faltan, nunca cambia los tuyos, y antes de la primera vez guarda una copia en `~/Library/Preferences/com.apple.symbolichotkeys.plist.bak-yabaibar`.
+   - Mission Control solo tiene atajos para los escritorios 1 a 9.
 2. Da permiso de Accesibilidad a YabaiBar. El primer clic muestra el aviso de macOS; después, actívala en Ajustes del Sistema › Privacidad y seguridad › Accesibilidad.
 
 «Primeros pasos» comprueba las dos cosas. Si el permiso está marcado pero el clic no cambia de escritorio, la firma de la app cambió (por ejemplo, porque la compilaste tú): quita YabaiBar de la lista con "−" y vuelve a pulsar una tarjeta para que la pida de nuevo.
@@ -213,6 +219,7 @@ Haz clic en la isla y elige "Ajustes…". La ventana tiene tres pestañas, Gener
 | Ajuste | Qué hace | Por defecto |
 | --- | --- | --- |
 | Señales automáticas | YabaiBar añade a yabai las señales que refrescan la isla (ver [Refresco en tiempo real](#refresco-en-tiempo-real)) | Activado |
+| Añadir los atajos de los escritorios nuevos | Los escritorios nuevos del 1 al 9 reciben solos su atajo «Ir al escritorio N». Al activarlo, también los que falten (ver [Cambiar de escritorio con clic](#cambiar-de-escritorio-con-clic)) | Desactivado hasta que eliges «Añadir siempre» |
 | Velocidad de las alas | Lo que tardan las alas en recogerse y volver a salir al cambiar de escritorio: Lenta, Normal, Rápida o Sin animación | Normal |
 | Al pasar el puntero | Si está apagado, la isla solo se abre con el atajo o el gesto | Activado |
 | Atajo | La combinación que abre y cierra la isla desde cualquier app. Pulsa el botón y luego la combinación nueva; Esc cancela y ⌫ lo quita | ⌥I |

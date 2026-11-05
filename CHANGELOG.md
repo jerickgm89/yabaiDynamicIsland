@@ -2,6 +2,16 @@
 
 Las versiones de YabaiBar. La 3.0.0 es la primera que se instala sin compilar: con Homebrew o con el DMG de [Releases](https://github.com/jerickgm89/yabaiDynamicIsland/releases). `scripts/release.sh` copia la sección de cada versión en las notas de su release.
 
+## [3.2.0] - 2026-11-04
+
+- **Atajos de escritorio automáticos:**
+  - Al crear un escritorio del 1 al 9 sin el atajo «Ir al escritorio N» de Mission Control, YabaiBar pregunta si lo añade, con el mismo modificador que los demás (⌥5 si los otros son ⌥1 a ⌥4).
+  - Con «Añadir siempre», los escritorios nuevos lo reciben solos y la isla lo dice.
+  - También desde la tarjeta «Añadir atajo» y desde «Primeros pasos».
+  - Solo añade los que faltan y antes guarda una copia de tus atajos.
+- **Mission Control:** la isla se oculta, como la barra de menús. Antes, al pasar el puntero por ella, se abría y se cerraba varias veces.
+- **Escritorios nuevos al momento:** los que se crean o se quitan en Mission Control salen en la isla al cerrarlo, sin tener que cambiar de escritorio.
+
 ## [3.1.0] - 2026-11-04
 
 - **Todos los MacBook con notch:** MacBook Pro desde 2021 (de M1 Pro a M5 Max) y MacBook Air desde 2022 (de M2 a M5). La isla ya medía el notch en la pantalla, así que se ajusta a cada modelo y a cada escala de pantalla. Ahora «Primeros pasos» reconoce el modelo y dice cuánto mide su notch.

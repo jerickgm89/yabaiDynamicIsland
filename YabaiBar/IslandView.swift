@@ -39,6 +39,12 @@ final class IslandModel {
         space.isFocused || shortcutLabels[space.index] != nil
     }
 
+    /// Se ilumina y se puede pulsar: las que llevan a su escritorio y, del 1 al 9, las que no tienen atajo, que
+    /// ofrecen añadirlo
+    func canPress(_ space: SpaceSummary) -> Bool {
+        canSwitch(to: space) || (!space.isFullscreen && DesktopShortcuts.desktops.contains(space.index))
+    }
+
     /// Ancho de cada ala tal como se ve ahora; con "Reducir movimiento" las alas no se recogen, solo se funden
     var visibleWingWidth: CGFloat {
         if wingsTucked && !reduceMotion { return 0 }
@@ -172,10 +178,12 @@ struct IslandView: View {
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(.white.opacity(hovered ? 0.75 : 0.45))
                 } else if !space.isFocused {
-                    // Sin "Ir al escritorio N" en Ajustes › Teclado › Atajos no se puede ir con clic
-                    Text("Sin atajo")
+                    // Sin "Ir al escritorio N" en Ajustes › Teclado › Atajos no se puede ir con clic. Del 1 al 9,
+                    // el clic ofrece añadirlo (DesktopShortcutAssistant); Mission Control no tiene más
+                    let canAdd = model.canPress(space)
+                    Text(canAdd ? "Añadir atajo" : "Sin atajo")
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.25))
+                        .foregroundStyle(.white.opacity(canAdd ? (hovered ? 0.75 : 0.45) : 0.25))
                 }
             }
             HStack(spacing: IslandExpandedLayout.iconSpacing) {
@@ -325,6 +333,11 @@ struct IslandView: View {
                 Image(systemName: peek.phase.isBreak ? "leaf.fill" : "target")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Self.phaseColor(peek.phase))
+            } else if case .shortcuts = model.peek {
+                // Atajos de escritorio añadidos
+                Image(systemName: "keyboard")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white)
             } else if let fallbackText = model.fallbackText {
                 Text(fallbackText)
                     .font(.system(size: 13, weight: .semibold))
@@ -366,6 +379,8 @@ struct IslandView: View {
                     .foregroundStyle(Self.batteryColor(event))
             } else if case let .pomodoro(peek) = model.peek {
                 peekText(peek.title, peek.subtitle)
+            } else if case let .shortcuts(title, subtitle) = model.peek {
+                peekText(title, subtitle)
             } else if model.peek == .track, let nowPlaying = model.nowPlaying {
                 // Aviso de canción nueva: el título y el artista
                 peekText(nowPlaying.title, nowPlaying.artist)

@@ -93,6 +93,15 @@ struct SettingsView: View {
             }
 
             Section {
+                Toggle("Añadir los atajos de los escritorios nuevos", isOn: $settings.autoDesktopShortcuts)
+            } header: {
+                Text("Escritorios")
+            } footer: {
+                Text("La isla te lleva a cada escritorio pulsando su atajo «Ir al escritorio N» de Mission Control. Activado, los escritorios del 1 al 9 que no lo tengan lo reciben solos, con el mismo modificador que los demás (⌥5 si los otros son ⌥1…⌥4). Solo se añaden los que faltan, y la primera vez se guarda una copia de tus atajos en Preferencias.")
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
                 Toggle("Batería y cargador", isOn: $settings.batteryAlerts)
                 Toggle("Botón de mantener despierto", isOn: $settings.keepAwakeButton)
             } header: {

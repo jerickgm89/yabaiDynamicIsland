@@ -40,6 +40,12 @@ final class AppSettings {
         didSet { defaults.set(autoYabaiSignals, forKey: Key.autoYabaiSignals) }
     }
 
+    /// Los escritorios nuevos del 1 al 9 reciben solos su atajo «Ir al escritorio N» (ver DesktopShortcutAssistant).
+    /// Apagado hasta que el usuario elige «Añadir siempre» o lo activa en Ajustes
+    var autoDesktopShortcuts: Bool {
+        didSet { defaults.set(autoDesktopShortcuts, forKey: Key.autoDesktopShortcuts) }
+    }
+
     /// "Primeros pasos" se abre sola solo la primera vez
     var hasSeenWelcome: Bool {
         didSet { defaults.set(hasSeenWelcome, forKey: Key.hasSeenWelcome) }
@@ -191,6 +197,7 @@ final class AppSettings {
         static let openOnHover = "openOnHover"
         static let autoYabaiSignals = "autoYabaiSignals"
         static let hasSeenWelcome = "hasSeenWelcome"
+        static let autoDesktopShortcuts = "autoDesktopShortcuts"
         static let showNowPlaying = "showNowPlaying"
         static let nowPlayingSource = "nowPlayingSource"
         static let showMusicBars = "showMusicBars"
@@ -223,6 +230,7 @@ final class AppSettings {
         openOnHover = defaults.object(forKey: Key.openOnHover) as? Bool ?? true
         autoYabaiSignals = defaults.object(forKey: Key.autoYabaiSignals) as? Bool ?? true
         hasSeenWelcome = defaults.bool(forKey: Key.hasSeenWelcome)
+        autoDesktopShortcuts = defaults.bool(forKey: Key.autoDesktopShortcuts)
         showNowPlaying = defaults.object(forKey: Key.showNowPlaying) as? Bool ?? true
         nowPlayingSource = defaults.string(forKey: Key.nowPlayingSource).flatMap(NowPlayingSource.init(rawValue:)) ?? .any
         showMusicBars = defaults.object(forKey: Key.showMusicBars) as? Bool ?? true

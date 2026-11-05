@@ -38,11 +38,13 @@ enum IslandPeek: Equatable {
     case battery(BatteryEvent, level: Int)
     /// El Pomodoro: la fase que empieza o lo que queda
     case pomodoro(PomodoroPeek)
+    /// Atajos de escritorio añadidos: «Escritorio 5 · Atajo ⌥5»
+    case shortcuts(title: String, subtitle: String)
 
     /// Cuánto se ve
     var duration: Duration {
         switch self {
-        case .track: .seconds(3)
+        case .track, .shortcuts: .seconds(3)
         case .battery(.low, _), .battery(.critical, _): .seconds(5)
         case .battery: .seconds(3)
         case .pomodoro(let peek):
@@ -56,7 +58,7 @@ enum IslandPeek: Equatable {
     /// Las alas se abren al máximo para que quepa un título
     var widensWings: Bool {
         switch self {
-        case .track, .pomodoro: true
+        case .track, .pomodoro, .shortcuts: true
         case .battery: false
         }
     }
@@ -67,6 +69,7 @@ enum IslandPeek: Equatable {
         case .track: "canción nueva"
         case .battery(let event, let level): "batería \(event) al \(level) %"
         case .pomodoro(let peek): "\(peek.title) · \(peek.subtitle)"
+        case .shortcuts(let title, let subtitle): "\(title) · \(subtitle)"
         }
     }
 
@@ -75,7 +78,7 @@ enum IslandPeek: Equatable {
     var priority: Int {
         switch self {
         case .track: 0
-        case .battery: 1
+        case .battery, .shortcuts: 1
         case .pomodoro: 2
         }
     }

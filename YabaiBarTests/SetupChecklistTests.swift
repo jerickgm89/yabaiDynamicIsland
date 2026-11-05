@@ -124,8 +124,8 @@ struct SetupChecklistTests {
         inputs.desktops = [1, 2, 3, 4, 5, 6]
         let partial = row(.desktopShortcuts, inputs)
         #expect(partial?.status == .warning)
-        #expect(partial?.detail.hasPrefix("Sin atajo: los escritorios 5, 6.") == true)
-        #expect(partial?.action == .keyboardSettings)
+        #expect(partial?.detail.hasPrefix("Sin atajo: los escritorios 5 y 6.") == true)
+        #expect(partial?.action == .addDesktopShortcuts)
 
         inputs.desktopsWithShortcut = []
         #expect(row(.desktopShortcuts, inputs)?.status == .missing)

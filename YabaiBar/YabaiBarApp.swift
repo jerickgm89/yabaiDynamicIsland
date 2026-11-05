@@ -23,6 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pomodoroKey: GlobalHotKey?
     private var trackpad: TrackpadMonitor?
     private var signals: YabaiSignals?
+    private var desktopShortcuts: DesktopShortcutAssistant?
     private var welcome: WelcomeWindow?
     private var workspaceObservers: [NSObjectProtocol] = []
     private var refreshToken: Int32 = NOTIFY_TOKEN_INVALID
@@ -53,16 +54,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.pomodoro = pomodoro
         let focuser = ShortcutFocuser()
         let launchAtLogin = LaunchAtLogin()
-        let welcome = WelcomeWindow(settings: settings, store: store, focuser: focuser, launchAtLogin: launchAtLogin)
+        // En los tests la app hace de host y xcodebuild la cierra sin avisar (sin SIGTERM): el adaptador de música
+        // quedaría huérfano en cada pasada, así que ahí no se arranca
+        let isTestHost = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        // Los atajos «Ir al escritorio N» de los escritorios nuevos. En los tests no: escribiría los atajos de macOS
+        let desktopShortcuts = isTestHost
+            ? nil : DesktopShortcutAssistant(store: store, settings: settings, writer: SymbolicHotKeysWriter())
+        self.desktopShortcuts = desktopShortcuts
+        let welcome = WelcomeWindow(
+            settings: settings, store: store, focuser: focuser, launchAtLogin: launchAtLogin,
+            addDesktopShortcuts: { desktopShortcuts?.offer() }
+        )
         self.welcome = welcome
         let menu = AppMenu(
             store: store, launchAtLogin: launchAtLogin, settingsWindow: SettingsWindow(settings: settings),
             welcomeWindow: welcome, pomodoro: pomodoro, settings: settings
         )
         self.menu = menu
-        // En los tests la app hace de host y xcodebuild la cierra sin avisar (sin SIGTERM): el adaptador de música
-        // quedaría huérfano en cada pasada, así que ahí no se arranca
-        let isTestHost = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
         // Las señales que refrescan la isla, sin tocar el yabairc. En los tests no: cambiarían el yabai real
         if !isTestHost { signals = YabaiSignals(client: yabai, settings: settings, store: store) }
         let media = NowPlayingStore(adapter: isTestHost ? nil : MediaRemoteAdapter(), settings: settings)
@@ -72,6 +80,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             keepAwake: KeepAwake(), pomodoro: pomodoro
         )
         self.island = island
+        island.onMissingShortcut = { [weak desktopShortcuts] in desktopShortcuts?.offer() }
+        desktopShortcuts?.onAdded = { island.shortcutsAdded($0) }
         battery = BatteryMonitor { state in island.batteryChanged(state) }
         // Cada evento del Pomodoro: el aviso de la isla, y el sonido y la música
         let cue = PomodoroCue(settings: settings, media: media, pomodoro: pomodoro, ducker: VolumeDucker(), player: CuePlayer())

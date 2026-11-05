@@ -12,9 +12,15 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
     private let status: SetupStatus
     private var window: NSWindow?
 
-    init(settings: AppSettings, store: SpacesStore, focuser: ShortcutFocuser, launchAtLogin: LaunchAtLogin) {
+    init(
+        settings: AppSettings, store: SpacesStore, focuser: ShortcutFocuser, launchAtLogin: LaunchAtLogin,
+        addDesktopShortcuts: @escaping @MainActor () -> Void
+    ) {
         self.settings = settings
-        status = SetupStatus(settings: settings, store: store, focuser: focuser, launchAtLogin: launchAtLogin)
+        status = SetupStatus(
+            settings: settings, store: store, focuser: focuser, launchAtLogin: launchAtLogin,
+            addDesktopShortcuts: addDesktopShortcuts
+        )
     }
 
     func show() {
@@ -76,14 +82,18 @@ final class SetupStatus {
     @ObservationIgnored private let focuser: ShortcutFocuser
     @ObservationIgnored private let launchAtLogin: LaunchAtLogin
     @ObservationIgnored private var task: Task<Void, Never>?
+    /// Pregunta y añade los atajos «Ir al escritorio N» que faltan (DesktopShortcutAssistant)
+    @ObservationIgnored let addDesktopShortcuts: @MainActor () -> Void
 
-    private static let keyboardSettings = URL(string: "x-apple.systempreferences:com.apple.Keyboard-Settings.extension")!
-
-    init(settings: AppSettings, store: SpacesStore, focuser: ShortcutFocuser, launchAtLogin: LaunchAtLogin) {
+    init(
+        settings: AppSettings, store: SpacesStore, focuser: ShortcutFocuser, launchAtLogin: LaunchAtLogin,
+        addDesktopShortcuts: @escaping @MainActor () -> Void
+    ) {
         self.settings = settings
         self.store = store
         self.focuser = focuser
         self.launchAtLogin = launchAtLogin
+        self.addDesktopShortcuts = addDesktopShortcuts
         update()
     }
 
@@ -105,7 +115,8 @@ final class SetupStatus {
     func update() {
         // Si acabas de arrancar yabai, el error se queda hasta el siguiente refresco
         if store.lastError != nil { store.requestRefresh() }
-        let desktops = store.spaces.map(\.index)
+        // Los espacios a pantalla completa no son escritorios de Mission Control
+        let desktops = store.spaces.filter { !$0.isFullscreen }.map(\.index)
         let screens = NSScreen.screens.map(Self.describe)
         let inputs = SetupChecklist.Inputs(
             model: MacModels.current,
@@ -143,7 +154,6 @@ final class SetupStatus {
     }
 
     func openYabaiWiki() { NSWorkspace.shared.open(SetupChecklist.yabaiWiki) }
-    func openKeyboardSettings() { NSWorkspace.shared.open(Self.keyboardSettings) }
 
     func requestAccessibility() {
         focuser.requestPermission()
@@ -240,8 +250,8 @@ private struct WelcomeView: View {
             copyButton(SetupChecklist.startYabai, for: row.item)
         case .signalsToggle?:
             Toggle("", isOn: $settings.autoYabaiSignals).labelsHidden().toggleStyle(.switch)
-        case .keyboardSettings?:
-            Button("Abrir Teclado", action: status.openKeyboardSettings)
+        case .addDesktopShortcuts?:
+            Button("Añadir…") { status.addDesktopShortcuts() }
         case .requestAccessibility?:
             Button("Dar permiso", action: status.requestAccessibility)
         case .launchAtLoginToggle?:

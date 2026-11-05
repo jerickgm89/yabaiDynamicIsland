@@ -22,6 +22,9 @@ final class IslandController {
     static let minimumTuck: Duration = .milliseconds(300)
     /// Si no llega contenido nuevo (gesto cancelado o mismo escritorio), las alas vuelven solas
     static let tuckTimeout: Duration = .milliseconds(900)
+    /// Oculta más que esto no es un cambio de escritorio sino Mission Control: al volver, las alas salen enseguida
+    static let longAbsence: Duration = .milliseconds(1500)
+    static let reappearDelay: Duration = .milliseconds(250)
     /// Fundido de la ventana entera al empezar un cambio de escritorio
     static let windowFadeDuration: TimeInterval = 0.15
     /// Lo que se espera, tras un cambio, para devolver la ventana a su tamaño justo
@@ -87,6 +90,8 @@ final class IslandController {
     private var clickMonitor: Any?
     private var autoHideTask: Task<Void, Never>?
     private var screenObserver: NSObjectProtocol?
+    /// Al pulsar la tarjeta de un escritorio sin atajo: ofrecer añadirlo (DesktopShortcutAssistant)
+    var onMissingShortcut: (() -> Void)?
     private var occlusionObserver: NSObjectProtocol?
 
     init(
@@ -233,9 +238,20 @@ final class IslandController {
     }
 
     private func occlusionChanged() {
-        if panel.occlusionState.contains(.visible) {
-            // De vuelta en pantalla: si no llega contenido nuevo (gesto cancelado), las alas vuelven solas
-            if tuckedAt != nil { scheduleUntuck(after: Self.tuckTimeout) }
+        let visible = panel.occlusionState.contains(.visible)
+        Logger.app.info("Isla: \(visible ? "visible" : "oculta", privacy: .public) (oclusión)")
+        if visible {
+            // Vuelve a verse al cerrar Mission Control: si ahí se creó o se quitó un escritorio, yabai no avisa
+            // (ni space_created ni space_destroyed), así que se consulta ahora. Al cambiar de escritorio coincide
+            // con activeSpaceDidChange y el debounce del store los junta en uno
+            store.requestRefresh()
+            // De vuelta en pantalla: si no llega contenido nuevo (gesto cancelado o Mission Control sin cambios), las
+            // alas vuelven solas. Tras una ausencia larga (Mission Control) no hay escritorio que deslizar: salen en
+            // cuanto da tiempo a que llegue el refresco
+            if let tuckedAt {
+                let wasLong = ContinuousClock.now - tuckedAt > Self.longAbsence
+                scheduleUntuck(after: wasLong ? Self.reappearDelay : Self.tuckTimeout)
+            }
         } else {
             tuckWings()
             // Oculta, SwiftUI deja de dibujarla: al volver, macOS enseñaría un instante el último fotograma
@@ -376,6 +392,12 @@ final class IslandController {
     func showPomodoroStatus() {
         guard let peek = PomodoroPeek.status(of: pomodoro.timer, at: .now) else { return }
         schedulePeek(.pomodoro(peek))
+    }
+
+    /// Atajos de escritorio añadidos (DesktopShortcutAssistant): la isla cerrada lo dice unos segundos
+    func shortcutsAdded(_ proposals: [DesktopShortcuts.Proposal]) {
+        let announcement = DesktopShortcuts.announcement(for: proposals)
+        schedulePeek(.shortcuts(title: announcement.title, subtitle: announcement.subtitle))
     }
 
     /// Aviso de PomodoroStore: el cambio de fase o lo que queda, en la isla cerrada
@@ -593,7 +615,7 @@ final class IslandController {
 
     // Solo se iluminan las tarjetas a las que se puede ir, y los botones
     private func updateHoveredCard() {
-        let hovered = spaceUnderPointer().flatMap { model.canSwitch(to: $0) ? $0.index : nil }
+        let hovered = spaceUnderPointer().flatMap { model.canPress($0) ? $0.index : nil }
         let control = controlUnderPointer()
         guard hovered != model.hoveredSpace || control != model.hoveredControl else { return }
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
@@ -615,7 +637,7 @@ final class IslandController {
             return true
         }
         guard let space = spaceUnderPointer() else { return false }
-        guard model.canSwitch(to: space) else { return true }
+        guard model.canPress(space) else { return true }
         withAnimation(reduceMotion ? Self.reducedAnimation : Self.cardAnimation) {
             model.hoveredSpace = space.index
             model.pressedSpace = space.index
@@ -661,6 +683,12 @@ final class IslandController {
         switch focuser.readiness(for: space.index) {
         case .noShortcut:
             Logger.app.info("El escritorio \(space.index) no tiene atajo en Ajustes › Teclado › Atajos")
+            close()
+            // El aviso, cuando la isla ya se ha cerrado
+            Task {
+                try? await Task.sleep(for: Self.switchDelay)
+                onMissingShortcut?()
+            }
         case .needsPermission:
             Logger.app.info("Falta el permiso de Accesibilidad para ir al escritorio \(space.index)")
             close()

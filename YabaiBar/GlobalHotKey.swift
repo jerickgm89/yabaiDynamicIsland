@@ -105,3 +105,16 @@ struct HotKeyShortcut: Codable, Equatable {
             .joined()
     }
 }
+
+extension HotKeyShortcut {
+    /// La misma combinación como la guarda macOS en sus atajos (com.apple.symbolichotkeys): la tecla y la máscara de
+    /// CGEventFlags. Así no se propone para un escritorio un atajo que ya usa YabaiBar
+    var combination: DesktopShortcuts.Combination {
+        var flags: CGEventFlags = []
+        if modifiers & controlKey != 0 { flags.insert(.maskControl) }
+        if modifiers & optionKey != 0 { flags.insert(.maskAlternate) }
+        if modifiers & shiftKey != 0 { flags.insert(.maskShift) }
+        if modifiers & cmdKey != 0 { flags.insert(.maskCommand) }
+        return DesktopShortcuts.Combination(keyCode: keyCode, modifiers: Int(flags.rawValue))
+    }
+}
