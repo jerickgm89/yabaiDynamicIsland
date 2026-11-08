@@ -92,38 +92,38 @@ struct NowPlayingTests {
     }
 }
 
-// Cuatro espacios: cuerpo de 580 pt (isla de 618 con las esquinas) y franja de 552 pt que empieza en x = 33.
-// La franja va de y = 126 a 178; los botones, a la derecha: anterior en 487–517, reproducir en 521–551 y
-// siguiente en 555–585
+// Cuatro espacios: cuerpo de 580 pt (isla de 618 con las esquinas) y fila de 552 pt que empieza en x = 33 y va de
+// y = 126 a 222. Sola, la música ocupa toda la fila: la carátula en 33–119 y los botones a la derecha, centrados en
+// alto (y = 159–189): anterior en 483–513, reproducir en 519–549 y siguiente en 555–585
 struct MediaStripLayoutTests {
     private func layout(hasMedia: Bool = true) -> IslandExpandedLayout {
         let spaces = (1...4).map { SpaceSummary(index: $0, isFocused: $0 == 1, apps: []) }
         return IslandExpandedLayout(spaces: spaces, minBodyWidth: 400, maxBodyWidth: 2000, topHeight: 38, hasMedia: hasMedia)
     }
 
-    private func control(_ x: CGFloat, _ y: CGFloat = 150, hasMedia: Bool = true) -> IslandExpandedLayout.Control? {
-        layout(hasMedia: hasMedia).mediaControl(at: CGPoint(x: x, y: y), islandWidth: 618, topHeight: 38)
+    private func control(_ x: CGFloat, _ y: CGFloat = 174, hasMedia: Bool = true) -> IslandExpandedLayout.Control? {
+        layout(hasMedia: hasMedia).control(at: CGPoint(x: x, y: y), islandWidth: 618, topHeight: 38)
     }
 
-    @Test func theStripMakesTheIslandTaller() {
+    @Test func theRowMakesTheIslandTaller() {
         #expect(layout(hasMedia: false).height == 130)
-        #expect(layout().height == 192)
+        #expect(layout().height == 236)
         #expect(layout().mediaWidth == 552)
+        #expect(layout().musicSection == CGRect(x: 0, y: 0, width: 552, height: 96))
     }
 
     @Test func findsEachControl() {
-        #expect(control(53) == .artwork)
-        #expect(control(500) == .previous)
-        #expect(control(530) == .playPause)
+        #expect(control(60, 150) == .artwork)
+        #expect(control(498) == .previous)
+        #expect(control(534) == .playPause)
         #expect(control(570) == .next)
     }
 
-    @Test func gapsTextAndOutsideAreNotControls() {
-        #expect(control(519) == nil)
+    @Test func textAndOutsideAreNotControls() {
         #expect(control(300) == nil)
         #expect(control(20) == nil)
-        #expect(control(530, 120) == nil)
-        #expect(control(530, 180) == nil)
-        #expect(control(530, hasMedia: false) == nil)
+        #expect(control(534, 120) == nil)
+        #expect(control(534, 200) == nil)
+        #expect(control(534, hasMedia: false) == nil)
     }
 }

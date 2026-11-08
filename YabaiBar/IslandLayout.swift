@@ -91,8 +91,9 @@ struct IslandLayout: Equatable {
     }
 }
 
-// Geometría pura de la isla abierta: debajo de la franja del notch, una tarjeta por espacio en una fila; debajo,
-// la franja del Pomodoro si está en marcha y la de "Ahora suena" si suena algo. Nunca es más estrecha que la isla cerrada y, si hay muchos
+// Geometría pura de la isla abierta: en la franja del notch, los botones de las esquinas (el Pomodoro y la taza a la
+// izquierda, el engranaje a la derecha); debajo, una tarjeta por espacio en una fila, y debajo, la fila de la música y
+// el Pomodoro. Nunca es más estrecha que la isla cerrada y, si hay muchos
 // espacios, las tarjetas se estrechan.
 struct IslandExpandedLayout: Equatable {
     static let cardWidth: CGFloat = 132
@@ -112,28 +113,46 @@ struct IslandExpandedLayout: Equatable {
     static let overflowWidth: CGFloat = 14
     /// Lo que el "+n" puede comerse del margen derecho de la tarjeta: así caben 4 íconos y el "+n" en 132 pt
     static let overflowIntoPadding: CGFloat = 6
-    // La franja "Ahora suena": carátula a la izquierda, título y progreso, y los tres botones a la derecha
-    static let mediaGap: CGFloat = 10
-    static let mediaHeight: CGFloat = 52
-    static let artworkSize: CGFloat = 44
+    // La fila de la música y el Pomodoro, debajo de las tarjetas. Si están los dos, la comparten separados por una
+    // línea, la música a la izquierda; si solo hay uno, ocupa toda la fila. Así la isla no crece hacia abajo
+    static let activityGap: CGFloat = 10
+    static let activityHeight: CGFloat = 96
+    /// La carátula y el anillo del Pomodoro
+    static let coverSize: CGFloat = 86
+    /// De la carátula o el anillo al texto
+    static let coverGap: CGFloat = 14
+    /// A cada lado de la línea que separa la música del Pomodoro
+    static let dividerGap: CGFloat = 16
+    /// Lo que se lleva la música cuando comparte la fila
+    static let musicShare: CGFloat = 0.58
     static let controlSize: CGFloat = 30
-    static let controlSpacing: CGFloat = 4
+    static let controlSpacing: CGFloat = 6
+    /// Con la fila compartida, los botones van debajo del título, el álbum y el artista, alineados con el texto
+    static let sharedControlsTop: CGFloat = 58
+    /// Donde empieza el texto (título, álbum, artista; o fase, ronda, hoy) dentro de su parte
+    static let sharedTextTop: CGFloat = 4
+    static let musicTextTop: CGFloat = 10
+    static let pomodoroTextTop: CGFloat = 18
+    /// La barra de progreso de la música, debajo de los botones si comparte la fila
+    static let sharedProgressTop: CGFloat = 86
+    static let musicProgressTop: CGFloat = 66
+    /// El símbolo de cada botón mide unos 18 pt en sus 30: el primero se corre esto para alinearse con el texto
+    static let controlGlyphInset: CGFloat = 6
+    /// Lo mínimo que mide cada parte de la fila compartida: caben el anillo, «Descanso largo» y los tres botones
+    static let minSharedSection: CGFloat = 220
+    /// Lo mínimo que mide la fila con una sola parte: la carátula, algo de texto y los botones a la derecha
+    static let minSingleRow: CGFloat = 330
     static let controls: [Control] = [.previous, .playPause, .next]
-    static var controlsWidth: CGFloat {
-        CGFloat(controls.count) * controlSize + CGFloat(controls.count - 1) * controlSpacing
-    }
 
-    /// Los botones de las esquinas, a la altura del notch: el Pomodoro a la izquierda y mantener despierto a la
-    /// derecha
+    /// Los botones de las esquinas, a la altura del notch: el Pomodoro y la taza a la izquierda, y el engranaje de
+    /// los ajustes a la derecha
     static let cornerButtonSize: CGFloat = 26
-    // La franja del Pomodoro: la fase y el progreso a la izquierda; la cuenta atrás y tres botones a la derecha
-    static let pomodoroGap: CGFloat = 10
-    static let pomodoroHeight: CGFloat = 44
+    static let cornerButtonSpacing: CGFloat = 4
     static let pomodoroControls: [Control] = [.pomodoroPlayPause, .pomodoroSkip, .pomodoroStop]
 
-    /// Los botones de la isla abierta: los de la franja "Ahora suena", los del Pomodoro y los de las esquinas
-    enum Control: Equatable {
-        case artwork, previous, playPause, next, keepAwake
+    /// Los botones de la isla abierta: los de la música, los del Pomodoro y los de las esquinas
+    enum Control: Hashable {
+        case artwork, previous, playPause, next, keepAwake, settings
         case pomodoroToggle, pomodoroPlayPause, pomodoroSkip, pomodoroStop
     }
 
@@ -142,13 +161,17 @@ struct IslandExpandedLayout: Equatable {
     let hasKeepAwake: Bool
     let hasPomodoro: Bool
     let hasPomodoroButton: Bool
+    let hasSettingsButton: Bool
     /// Ancho del cuerpo, sin las esquinas superiores cóncavas
     let bodyWidth: CGFloat
     let height: CGFloat
     let cardWidth: CGFloat
 
-    /// Ancho de las franjas del Pomodoro y de "Ahora suena": todo el cuerpo menos los márgenes
+    /// Ancho de la fila de la música y el Pomodoro: todo el cuerpo menos los márgenes
     var mediaWidth: CGFloat { bodyWidth - 2 * Self.padding }
+    var hasActivity: Bool { hasMedia || hasPomodoro }
+    /// La música y el Pomodoro comparten la fila
+    var sharesActivityRow: Bool { hasMedia && hasPomodoro }
 
     /// Los íconos de una tarjeta con esas apps: hasta 4 con el ancho normal, menos si hay tantos espacios que las
     /// tarjetas se estrechan. Si no caben todas, se deja sitio al "+n"
@@ -175,94 +198,155 @@ struct IslandExpandedLayout: Equatable {
     /// el cuerpo deja sitio a cada lado para que no tapen las alas
     init(
         spaces: [SpaceSummary], minBodyWidth: CGFloat, maxBodyWidth: CGFloat, topHeight: CGFloat, hasMedia: Bool = false,
-        hasKeepAwake: Bool = false, hasPomodoro: Bool = false, hasPomodoroButton: Bool = false
+        hasKeepAwake: Bool = false, hasPomodoro: Bool = false, hasPomodoroButton: Bool = false,
+        hasSettingsButton: Bool = false
     ) {
         self.spaces = spaces
         self.hasMedia = hasMedia
         self.hasKeepAwake = hasKeepAwake
         self.hasPomodoro = hasPomodoro
         self.hasPomodoroButton = hasPomodoroButton
+        self.hasSettingsButton = hasSettingsButton
         let count = CGFloat(spaces.count)
         let gaps = max(0, count - 1) * Self.cardSpacing
         let natural = 2 * Self.padding + count * Self.cardWidth + gaps
-        let corners = hasKeepAwake || hasPomodoroButton
-        let minimum = minBodyWidth + (corners ? 2 * (Self.cornerButtonSize + Self.padding) : 0)
+        // Las alas van centradas en el notch: cada lado deja sitio a los botones del lado que más tenga
+        let left = Self.cornerWidth(buttons: (hasPomodoroButton ? 1 : 0) + (hasKeepAwake ? 1 : 0))
+        let right = Self.cornerWidth(buttons: hasSettingsButton ? 1 : 0)
+        let corner = max(left, right)
+        var minimum = minBodyWidth + (corner > 0 ? 2 * (corner + Self.padding) : 0)
+        // La fila de la música y el Pomodoro necesita su sitio aunque haya pocos escritorios
+        if hasMedia && hasPomodoro {
+            minimum = max(minimum, 2 * Self.padding + 2 * Self.minSharedSection + 2 * Self.dividerGap)
+        } else if hasMedia || hasPomodoro {
+            minimum = max(minimum, 2 * Self.padding + Self.minSingleRow)
+        }
         bodyWidth = min(max(minimum, natural), max(minimum, maxBodyWidth))
         cardWidth = count > 0 ? min(Self.cardWidth, (bodyWidth - 2 * Self.padding - gaps) / count) : 0
         height = topHeight + Self.gapBelowNotch + Self.cardHeight
-            + (hasPomodoro ? Self.pomodoroGap + Self.pomodoroHeight : 0)
-            + (hasMedia ? Self.mediaGap + Self.mediaHeight : 0)
+            + (hasMedia || hasPomodoro ? Self.activityGap + Self.activityHeight : 0)
             + Self.padding
     }
 
-    /// Dónde va el botón de mantener despierto, en coordenadas de la isla (origen arriba a la izquierda)
+    // Lo que ocupan varios botones de esquina seguidos
+    private static func cornerWidth(buttons: Int) -> CGFloat {
+        buttons > 0 ? CGFloat(buttons) * cornerButtonSize + CGFloat(buttons - 1) * cornerButtonSpacing : 0
+    }
+
+    // El botón número `index` de la esquina izquierda, en coordenadas de la isla (origen arriba a la izquierda)
+    private func leftCornerFrame(_ index: Int, islandWidth: CGFloat, topHeight: CGFloat) -> CGRect {
+        let size = Self.cornerButtonSize(topHeight: topHeight)
+        let x = (islandWidth - bodyWidth) / 2 + Self.padding + CGFloat(index) * (size + Self.cornerButtonSpacing)
+        return CGRect(x: x, y: (topHeight - size) / 2, width: size, height: size)
+    }
+
+    /// El botón del Pomodoro, el primero de la esquina izquierda
+    func pomodoroButtonFrame(islandWidth: CGFloat, topHeight: CGFloat) -> CGRect? {
+        guard hasPomodoroButton else { return nil }
+        return leftCornerFrame(0, islandWidth: islandWidth, topHeight: topHeight)
+    }
+
+    /// La taza de mantener despierto, a la derecha del Pomodoro (o la primera, sin él)
     func keepAwakeFrame(islandWidth: CGFloat, topHeight: CGFloat) -> CGRect? {
         guard hasKeepAwake else { return nil }
+        return leftCornerFrame(hasPomodoroButton ? 1 : 0, islandWidth: islandWidth, topHeight: topHeight)
+    }
+
+    /// El engranaje de los ajustes, en la esquina derecha
+    func settingsButtonFrame(islandWidth: CGFloat, topHeight: CGFloat) -> CGRect? {
+        guard hasSettingsButton else { return nil }
         let size = Self.cornerButtonSize(topHeight: topHeight)
         let x = (islandWidth + bodyWidth) / 2 - Self.padding - size
         return CGRect(x: x, y: (topHeight - size) / 2, width: size, height: size)
     }
 
-    /// Dónde va el botón del Pomodoro, arriba a la izquierda, simétrico al de mantener despierto
-    func pomodoroButtonFrame(islandWidth: CGFloat, topHeight: CGFloat) -> CGRect? {
-        guard hasPomodoroButton else { return nil }
-        let size = Self.cornerButtonSize(topHeight: topHeight)
-        let x = (islandWidth - bodyWidth) / 2 + Self.padding
-        return CGRect(x: x, y: (topHeight - size) / 2, width: size, height: size)
+    // MARK: - La fila de la música y el Pomodoro
+
+    /// Dónde empieza la fila, en coordenadas de la isla (origen arriba a la izquierda)
+    func activityOrigin(islandWidth: CGFloat, topHeight: CGFloat) -> CGPoint {
+        CGPoint(x: (islandWidth - mediaWidth) / 2, y: topHeight + Self.gapBelowNotch + Self.cardHeight + Self.activityGap)
     }
 
-    /// Dónde va la franja del Pomodoro, entre las tarjetas y la música
-    func pomodoroStripFrame(islandWidth: CGFloat, topHeight: CGFloat) -> CGRect? {
+    /// La parte de la música, en coordenadas de la fila: toda la fila si no hay Pomodoro
+    var musicSection: CGRect? {
+        guard hasMedia else { return nil }
+        guard hasPomodoro else { return CGRect(x: 0, y: 0, width: mediaWidth, height: Self.activityHeight) }
+        // El reparto, sin dejar a ninguna de las dos por debajo de su mínimo
+        let shared = mediaWidth - 2 * Self.dividerGap
+        let width = min(max((shared * Self.musicShare).rounded(), Self.minSharedSection), shared - Self.minSharedSection)
+        return CGRect(x: 0, y: 0, width: width, height: Self.activityHeight)
+    }
+
+    /// La parte del Pomodoro, en coordenadas de la fila: toda la fila si no hay música
+    var pomodoroSection: CGRect? {
         guard hasPomodoro else { return nil }
-        let top = topHeight + Self.gapBelowNotch + Self.cardHeight + Self.pomodoroGap
-        return CGRect(x: (islandWidth - mediaWidth) / 2, y: top, width: mediaWidth, height: Self.pomodoroHeight)
+        let x = musicSection.map { $0.maxX + 2 * Self.dividerGap } ?? 0
+        return CGRect(x: x, y: 0, width: mediaWidth - x, height: Self.activityHeight)
     }
 
-    /// El botón bajo un punto de la isla: los de las esquinas (con un margen, para acertarlos fácil), los del
-    /// Pomodoro o los de la franja "Ahora suena"
+    /// La x de la línea que separa las dos partes, en coordenadas de la fila
+    var dividerX: CGFloat? {
+        guard sharesActivityRow, let music = musicSection else { return nil }
+        return music.maxX + Self.dividerGap
+    }
+
+    /// La carátula o el anillo de una parte, a su izquierda y centrado en alto
+    static func coverFrame(in section: CGRect) -> CGRect {
+        CGRect(x: section.minX, y: section.minY + (section.height - coverSize) / 2, width: coverSize, height: coverSize)
+    }
+
+    /// Donde empieza el texto de una parte, a la derecha de la carátula o el anillo
+    static func textX(in section: CGRect) -> CGFloat {
+        section.minX + coverSize + coverGap
+    }
+
+    /// Los botones de una parte. Con la fila compartida van debajo del texto (el primero, alineado con él); si
+    /// no, a la derecha y centrados en alto
+    func controlFrames(_ controls: [Control], in section: CGRect) -> [(control: Control, frame: CGRect)] {
+        let step = Self.controlSize + Self.controlSpacing
+        let width = CGFloat(controls.count) * step - Self.controlSpacing
+        let origin = sharesActivityRow
+            ? CGPoint(x: Self.textX(in: section) - Self.controlGlyphInset, y: section.minY + Self.sharedControlsTop)
+            : CGPoint(x: section.maxX - width, y: section.midY - Self.controlSize / 2)
+        return controls.enumerated().map { index, control in
+            (control, CGRect(x: origin.x + CGFloat(index) * step, y: origin.y, width: Self.controlSize, height: Self.controlSize))
+        }
+    }
+
+    /// El botón bajo un punto de la isla: los de las esquinas (con un margen, para acertarlos fácil), la carátula
+    /// y los de la música, o los del Pomodoro
     func control(at point: CGPoint, islandWidth: CGFloat, topHeight: CGFloat) -> Control? {
-        if let frame = keepAwakeFrame(islandWidth: islandWidth, topHeight: topHeight), frame.insetBy(dx: -4, dy: -4).contains(point) {
+        if let frame = keepAwakeFrame(islandWidth: islandWidth, topHeight: topHeight), frame.insetBy(dx: -2, dy: -4).contains(point) {
             return .keepAwake
         }
-        if let frame = pomodoroButtonFrame(islandWidth: islandWidth, topHeight: topHeight),
+        if let frame = settingsButtonFrame(islandWidth: islandWidth, topHeight: topHeight),
            frame.insetBy(dx: -4, dy: -4).contains(point) {
+            return .settings
+        }
+        if let frame = pomodoroButtonFrame(islandWidth: islandWidth, topHeight: topHeight),
+           frame.insetBy(dx: -2, dy: -4).contains(point) {
             return .pomodoroToggle
         }
-        if let strip = pomodoroStripFrame(islandWidth: islandWidth, topHeight: topHeight), strip.contains(point) {
-            return Self.control(atX: point.x - strip.minX, stripWidth: strip.width, controls: Self.pomodoroControls)
+        let origin = activityOrigin(islandWidth: islandWidth, topHeight: topHeight)
+        let local = CGPoint(x: point.x - origin.x, y: point.y - origin.y)
+        if let music = musicSection {
+            if Self.coverFrame(in: music).contains(local) { return .artwork }
+            if let hit = controlFrames(Self.controls, in: music).first(where: { $0.frame.insetBy(dx: -3, dy: -3).contains(local) }) {
+                return hit.control
+            }
         }
-        return mediaControl(at: point, islandWidth: islandWidth, topHeight: topHeight)
+        if let pomodoro = pomodoroSection,
+           let hit = controlFrames(Self.pomodoroControls, in: pomodoro).first(where: { $0.frame.insetBy(dx: -3, dy: -3).contains(local) }) {
+            return hit.control
+        }
+        return nil
     }
 
-    // Los tres botones de una franja, pegados a su borde derecho
-    private static func control(atX x: CGFloat, stripWidth: CGFloat, controls: [Control]) -> Control? {
-        let controlsX = x - (stripWidth - controlsWidth)
-        guard controlsX >= 0 else { return nil }
-        let index = Int(controlsX / (controlSize + controlSpacing))
-        let offset = controlsX - CGFloat(index) * (controlSize + controlSpacing)
-        return index < controls.count && offset < controlSize ? controls[index] : nil
-    }
-
-    /// Si un punto de la isla (origen arriba a la izquierda) cae en la franja "Ahora suena"
-    func mediaStripContains(_ point: CGPoint, islandWidth: CGFloat, topHeight: CGFloat) -> Bool {
-        stripX(of: point, islandWidth: islandWidth, topHeight: topHeight) != nil
-    }
-
-    /// El control de la franja "Ahora suena" bajo un punto de la isla. Cuenta toda la altura de la franja, para
-    /// que los botones sean fáciles de acertar
-    func mediaControl(at point: CGPoint, islandWidth: CGFloat, topHeight: CGFloat) -> Control? {
-        guard let x = stripX(of: point, islandWidth: islandWidth, topHeight: topHeight) else { return nil }
-        if x < Self.artworkSize { return .artwork }
-        return Self.control(atX: x, stripWidth: mediaWidth, controls: Self.controls)
-    }
-
-    // La x del punto dentro de la franja, o nil si cae fuera
-    private func stripX(of point: CGPoint, islandWidth: CGFloat, topHeight: CGFloat) -> CGFloat? {
-        let top = topHeight + Self.gapBelowNotch + Self.cardHeight + (hasPomodoro ? Self.pomodoroGap + Self.pomodoroHeight : 0)
-            + Self.mediaGap
-        guard hasMedia, point.y >= top, point.y < top + Self.mediaHeight else { return nil }
-        let x = point.x - (islandWidth - mediaWidth) / 2
-        return x >= 0 && x < mediaWidth ? x : nil
+    /// Si un punto de la isla cae en la parte de la música (para el gesto de dos dedos de lado)
+    func musicContains(_ point: CGPoint, islandWidth: CGFloat, topHeight: CGFloat) -> Bool {
+        guard let music = musicSection else { return false }
+        let origin = activityOrigin(islandWidth: islandWidth, topHeight: topHeight)
+        return music.contains(CGPoint(x: point.x - origin.x, y: point.y - origin.y))
     }
 
     /// La tarjeta bajo un punto de la isla (origen arriba a la izquierda), o `nil` en los huecos y fuera de

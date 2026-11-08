@@ -153,8 +153,9 @@ struct PomodoroPresetTests {
     }
 }
 
-// Cuatro espacios: cuerpo de 580 pt en una isla de 618. La franja del Pomodoro va de y = 126 a 170, sus botones a
-// la derecha como los de la música (487–517, 521–551, 555–585), y la música baja a 180–232
+// Cuatro espacios: cuerpo de 580 pt en una isla de 618. La música y el Pomodoro comparten la fila (y = 126–222): la
+// música se lleva 300 pt (33–333), porque el Pomodoro no baja de 220, y el Pomodoro empieza en x = 365, tras la
+// línea. Los botones van debajo del texto (y = 184–214): los de la música en 127–229 y los del Pomodoro en 459–561
 struct PomodoroLayoutTests {
     private func layout(pomodoro: Bool = true) -> IslandExpandedLayout {
         let spaces = (1...4).map { SpaceSummary(index: $0, isFocused: $0 == 1, apps: []) }
@@ -168,24 +169,53 @@ struct PomodoroLayoutTests {
         layout(pomodoro: pomodoro).control(at: CGPoint(x: x, y: y), islandWidth: 618, topHeight: 38)
     }
 
-    @Test func theStripMakesTheIslandTallerAndPushesTheMusicDown() {
-        #expect(layout(pomodoro: false).height == 192)
-        #expect(layout().height == 246)
-        #expect(control(570, 150, pomodoro: false) == .next)
-        #expect(control(570, 200) == .next)
+    // Con los dos, la isla mide lo mismo que solo con la música: comparten la fila
+    @Test func sharingTheRowKeepsTheIslandHeight() {
+        #expect(layout(pomodoro: false).height == 236)
+        #expect(layout().height == 236)
+        #expect(layout().musicSection == CGRect(x: 0, y: 0, width: 300, height: 96))
+        #expect(layout().pomodoroSection == CGRect(x: 332, y: 0, width: 220, height: 96))
+        #expect(layout().dividerX == 316)
     }
 
-    @Test func findsThePomodoroControls() {
-        #expect(control(500, 140) == .pomodoroPlayPause)
-        #expect(control(530, 140) == .pomodoroSkip)
-        #expect(control(570, 140) == .pomodoroStop)
-        #expect(control(300, 140) == nil)
+    @Test func findsTheControlsOfBothParts() {
+        #expect(control(60, 150) == .artwork)
+        #expect(control(142, 195) == .previous)
+        #expect(control(214, 195) == .next)
+        #expect(control(476, 195) == .pomodoroPlayPause)
+        #expect(control(512, 195) == .pomodoroSkip)
+        #expect(control(548, 195) == .pomodoroStop)
+        #expect(control(410, 150) == nil)
+        // Sin Pomodoro, los botones de la música vuelven a la derecha
+        #expect(control(570, 174, pomodoro: false) == .next)
     }
 
-    // Arriba a la izquierda, simétrico al sol: x = 19 + 14 = 33
+    // El gesto de dos dedos de lado solo cuenta sobre la música, no sobre el Pomodoro
+    @Test func theSwipeOnlyCountsOverTheMusic() {
+        #expect(layout().musicContains(CGPoint(x: 200, y: 150), islandWidth: 618, topHeight: 38))
+        #expect(!layout().musicContains(CGPoint(x: 480, y: 150), islandWidth: 618, topHeight: 38))
+    }
+
+    // Con pocos escritorios, la isla se ensancha para que quepan las dos partes con sus botones
+    @Test func fewDesktopsStillFitBothParts() throws {
+        let spaces = [SpaceSummary(index: 1, isFocused: true, apps: [])]
+        let narrow = IslandExpandedLayout(
+            spaces: spaces, minBodyWidth: 364, maxBodyWidth: 2000, topHeight: 38, hasMedia: true, hasPomodoro: true
+        )
+        let minimum: CGFloat = 2 * 14 + 2 * 220 + 2 * 16
+        #expect(narrow.bodyWidth == minimum)
+        let pomodoro = try #require(narrow.pomodoroSection)
+        for item in narrow.controlFrames(IslandExpandedLayout.pomodoroControls, in: pomodoro) {
+            #expect(item.frame.maxX <= pomodoro.maxX)
+        }
+    }
+
+    // Arriba a la izquierda, x = 19 + 14 = 33, y la taza justo a su derecha (33 + 26 + 4)
     @Test func theButtonSitsInTheTopLeftCorner() {
         #expect(layout().pomodoroButtonFrame(islandWidth: 618, topHeight: 38) == CGRect(x: 33, y: 6, width: 26, height: 26))
+        #expect(layout().keepAwakeFrame(islandWidth: 618, topHeight: 38) == CGRect(x: 63, y: 6, width: 26, height: 26))
         #expect(control(46, 19) == .pomodoroToggle)
+        #expect(control(76, 19) == .keepAwake)
     }
 }
 

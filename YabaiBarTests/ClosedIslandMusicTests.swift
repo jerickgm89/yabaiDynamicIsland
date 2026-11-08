@@ -104,7 +104,7 @@ struct MusicIndicatorLayoutTests {
     @Test func theStripCoversItsWholeArea() {
         let spaces = (1...4).map { summary($0, apps: 0, focused: $0 == 1) }
         let layout = IslandExpandedLayout(spaces: spaces, minBodyWidth: 400, maxBodyWidth: 2000, topHeight: 38, hasMedia: true)
-        #expect(layout.mediaStripContains(CGPoint(x: 300, y: 150), islandWidth: 618, topHeight: 38))
-        #expect(!layout.mediaStripContains(CGPoint(x: 300, y: 100), islandWidth: 618, topHeight: 38))
+        #expect(layout.musicContains(CGPoint(x: 300, y: 150), islandWidth: 618, topHeight: 38))
+        #expect(!layout.musicContains(CGPoint(x: 300, y: 100), islandWidth: 618, topHeight: 38))
     }
 }

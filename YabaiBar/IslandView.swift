@@ -110,14 +110,9 @@ struct IslandView: View {
             .scaleEffect(model.wingsTucked && !model.reduceMotion ? 0.85 : 1)
             if model.isExpanded {
                 cards.padding(.top, IslandExpandedLayout.gapBelowNotch)
-                if model.expanded.hasPomodoro, let pomodoro = model.pomodoro {
-                    pomodoroStrip(pomodoro)
-                        .padding(.top, IslandExpandedLayout.pomodoroGap)
-                        .transition(.opacity)
-                }
-                if model.expanded.hasMedia, let nowPlaying = model.nowPlaying {
-                    mediaStrip(nowPlaying)
-                        .padding(.top, IslandExpandedLayout.mediaGap)
+                if model.expanded.hasActivity {
+                    activityRow
+                        .padding(.top, IslandExpandedLayout.activityGap)
                         .transition(.opacity)
                 }
             }
@@ -127,6 +122,7 @@ struct IslandView: View {
             if model.isExpanded {
                 keepAwakeButton
                 pomodoroButton
+                settingsButton
             }
         }
         .background(
@@ -217,39 +213,94 @@ struct IslandView: View {
         .scaleEffect(cardScale(for: space))
     }
 
-    // MARK: - Ahora suena
+    // MARK: - La fila de la música y el Pomodoro
 
-    // Carátula, título, artista y progreso, y los botones a la derecha. Los clics los resuelve IslandController
-    // con IslandExpandedLayout.mediaControl, igual que los de las tarjetas
-    private func mediaStrip(_ nowPlaying: NowPlaying) -> some View {
-        HStack(spacing: 10) {
-            artwork
-                .frame(width: IslandExpandedLayout.artworkSize, height: IslandExpandedLayout.artworkSize)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .scaleEffect(controlScale(.artwork))
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 5) {
-                    if let icon = model.sourceIcon {
-                        Image(nsImage: icon).resizable().frame(width: 12, height: 12)
-                    }
-                    Text(nowPlaying.title)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.white)
-                }
-                Text(nowPlaying.artist)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.55))
-                progress(nowPlaying)
+    // Las dos partes comparten la fila, separadas por una línea; si solo hay una, ocupa toda la fila. Las posiciones
+    // salen de IslandExpandedLayout, que también resuelve los clics (IslandController), así que coinciden siempre
+    private var activityRow: some View {
+        let layout = model.expanded
+        return ZStack(alignment: .topLeading) {
+            if let x = layout.dividerX {
+                Rectangle()
+                    .fill(.white.opacity(0.14))
+                    .frame(width: 1, height: IslandExpandedLayout.activityHeight - 20)
+                    .offset(x: x, y: 10)
             }
-            .lineLimit(1)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            HStack(spacing: IslandExpandedLayout.controlSpacing) {
-                control(.previous, symbol: "backward.fill")
-                control(.playPause, symbol: nowPlaying.isPlaying ? "pause.fill" : "play.fill")
-                control(.next, symbol: "forward.fill")
+            if let section = layout.musicSection, let nowPlaying = model.nowPlaying {
+                musicPart(nowPlaying, in: section)
+            }
+            if let section = layout.pomodoroSection, let timer = model.pomodoro {
+                pomodoroPart(timer, in: section)
             }
         }
-        .frame(width: model.expanded.mediaWidth, height: IslandExpandedLayout.mediaHeight)
+        .frame(width: layout.mediaWidth, height: IslandExpandedLayout.activityHeight, alignment: .topLeading)
+    }
+
+    // La carátula grande con el ícono de la app en la esquina; el título, el álbum y el artista; los botones y el
+    // progreso. Compartiendo la fila, los botones van debajo del texto; sola, a la derecha
+    private func musicPart(_ nowPlaying: NowPlaying, in section: CGRect) -> some View {
+        let layout = model.expanded
+        let cover = IslandExpandedLayout.coverFrame(in: section)
+        let textX = IslandExpandedLayout.textX(in: section)
+        let controls = layout.controlFrames(IslandExpandedLayout.controls, in: section)
+        let shared = layout.sharesActivityRow
+        let textEnd = shared ? section.maxX : (controls.first?.frame.minX ?? section.maxX) - 16
+        return ZStack(alignment: .topLeading) {
+            ZStack(alignment: .bottomTrailing) {
+                artwork
+                    .frame(width: cover.width, height: cover.height)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                // El ícono de la app que suena, en la esquina y dentro de la carátula: así el clic en él también la abre
+                if let icon = model.sourceIcon {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .frame(width: 22, height: 22)
+                        .padding(2)
+                        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(.black))
+                        .padding(3)
+                }
+            }
+            .scaleEffect(controlScale(.artwork))
+            .offset(x: cover.minX, y: cover.minY)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(nowPlaying.title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white)
+                if !nowPlaying.album.isEmpty {
+                    Text(nowPlaying.album)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+                Text(nowPlaying.artist)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.4))
+            }
+            .lineLimit(1)
+            .frame(width: max(0, textEnd - textX), alignment: .leading)
+            .offset(x: textX, y: section.minY + (shared ? IslandExpandedLayout.sharedTextTop : IslandExpandedLayout.musicTextTop))
+
+            progress(nowPlaying)
+                .frame(width: max(0, textEnd - textX))
+                .offset(
+                    x: textX,
+                    y: section.minY + (shared ? IslandExpandedLayout.sharedProgressTop : IslandExpandedLayout.musicProgressTop)
+                )
+
+            ForEach(controls.indices, id: \.self) { index in
+                let item = controls[index]
+                control(item.control, symbol: Self.musicSymbol(item.control, playing: nowPlaying.isPlaying))
+                    .offset(x: item.frame.minX, y: item.frame.minY)
+            }
+        }
+    }
+
+    private static func musicSymbol(_ control: IslandExpandedLayout.Control, playing: Bool) -> String {
+        switch control {
+        case .previous: "backward.fill"
+        case .next: "forward.fill"
+        default: playing ? "pause.fill" : "play.fill"
+        }
     }
 
     @ViewBuilder private var artwork: some View {
@@ -429,7 +480,8 @@ struct IslandView: View {
                 progress: timer.progress(at: now),
                 remaining: timer.isRunning ? timer.remaining(at: now) : nil,
                 color: timer.isRunning ? NSColor(Self.phaseColor(timer.phase)) : NSColor.white.withAlphaComponent(0.35),
-                key: "\(timer.phase.rawValue) \(timer.state)"
+                key: "\(timer.phase.rawValue) \(timer.state)",
+                animated: !model.reduceMotion
             )
             .frame(width: IslandLayout.pomodoroRingSize, height: IslandLayout.pomodoroRingSize)
         }
@@ -470,6 +522,21 @@ struct IslandView: View {
         }
     }
 
+    // El engranaje, arriba a la derecha: abre los ajustes
+    @ViewBuilder private var settingsButton: some View {
+        if let frame = model.expanded.settingsButtonFrame(islandWidth: model.islandWidth, topHeight: model.height) {
+            let hovered = model.hoveredControl == .settings
+            Image(systemName: "gearshape.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white.opacity(hovered ? 0.9 : 0.55))
+                .frame(width: frame.width, height: frame.height)
+                .background(Circle().fill(.white.opacity(hovered ? 0.14 : 0)))
+                .scaleEffect(!model.reduceMotion && model.pressedControl == .settings ? 0.88 : 1)
+                .offset(x: frame.minX, y: frame.minY)
+                .transition(.opacity)
+        }
+    }
+
     // MARK: - Pomodoro
 
     static let focusColor = Color(red: 1, green: 0.42, blue: 0.33)
@@ -491,53 +558,84 @@ struct IslandView: View {
         }
     }
 
-    // La fase, la ronda y el progreso a la izquierda; la cuenta atrás y ⏯ ⏭ ⏹ a la derecha. Se redibuja cada
-    // segundo solo mientras corre y la isla está abierta
-    private func pomodoroStrip(_ timer: PomodoroTimer) -> some View {
+    // El anillo con lo que queda de la fase y, al lado, la fase, la ronda y los de hoy, con ⏯ ⏭ ⏹. El anillo lo anima
+    // Core Animation (PomodoroRing); la cuenta atrás se redibuja cada segundo solo mientras corre y la isla está
+    // abierta
+    private func pomodoroPart(_ timer: PomodoroTimer, in section: CGRect) -> some View {
+        let layout = model.expanded
+        let ring = IslandExpandedLayout.coverFrame(in: section)
+        let textX = IslandExpandedLayout.textX(in: section)
+        let controls = layout.controlFrames(IslandExpandedLayout.pomodoroControls, in: section)
+        let shared = layout.sharesActivityRow
+        let textEnd = shared ? section.maxX : (controls.first?.frame.minX ?? section.maxX) - 16
         let color = Self.phaseColor(timer.phase)
+        let round = timer.phase == .focus ? timer.completedInRound + 1 : timer.completedInRound
         return TimelineView(.animation(minimumInterval: 1, paused: !timer.isRunning)) { context in
-            HStack(spacing: 10) {
-                Image(systemName: timer.phase.isBreak ? "leaf.fill" : "target")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(color)
-                    .frame(width: IslandExpandedLayout.artworkSize)
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(pomodoroTitle(timer, at: context.date))
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.white)
-                    GeometryReader { proxy in
-                        Capsule()
-                            .fill(.white.opacity(0.15))
-                            .overlay(alignment: .leading) {
-                                Capsule().fill(color.opacity(0.9)).frame(width: proxy.size.width * timer.progress(at: context.date))
-                            }
+            ZStack(alignment: .topLeading) {
+                ZStack {
+                    PomodoroRing(
+                        progress: timer.progress(at: context.date),
+                        remaining: timer.isRunning ? timer.remaining(at: context.date) : nil,
+                        color: timer.isRunning ? NSColor(color) : NSColor.white.withAlphaComponent(0.35),
+                        key: "\(timer.phase.rawValue) \(timer.state)",
+                        lineWidth: 6,
+                        animated: !model.reduceMotion
+                    )
+                    VStack(spacing: 1) {
+                        Text(Self.countdown(timer.state == .ready ? timer.phaseDuration : timer.remaining(at: context.date)))
+                            .font(.system(size: 17, weight: .semibold))
+                            .monospacedDigit()
+                            .foregroundStyle(timer.isRunning ? .white : .white.opacity(0.6))
+                        Text(Self.ringCaption(timer))
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.5))
                     }
-                    .frame(height: 3)
+                }
+                .frame(width: ring.width, height: ring.height)
+                .offset(x: ring.minX, y: ring.minY)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(timer.phase.title)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(color)
+                    Text("Ronda \(round) de \(model.pomodoroRounds)")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.6))
+                    Text("Hoy \(timer.completed(on: context.date)) de \(model.pomodoroGoal)")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.4))
                 }
                 .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                Text(Self.countdown(timer.state == .ready ? timer.phaseDuration : timer.remaining(at: context.date)))
-                    .font(.system(size: 20, weight: .semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(timer.isRunning ? .white : .white.opacity(0.5))
-                    .fixedSize()
-                HStack(spacing: IslandExpandedLayout.controlSpacing) {
-                    control(.pomodoroPlayPause, symbol: timer.isRunning ? "pause.fill" : "play.fill")
-                    control(.pomodoroSkip, symbol: "forward.end.fill")
-                    control(.pomodoroStop, symbol: "stop.fill")
+                .frame(width: max(0, textEnd - textX), alignment: .leading)
+                .offset(
+                    x: textX,
+                    y: section.minY + (shared ? IslandExpandedLayout.sharedTextTop : IslandExpandedLayout.pomodoroTextTop)
+                )
+
+                ForEach(controls.indices, id: \.self) { index in
+                    let item = controls[index]
+                    control(item.control, symbol: Self.pomodoroSymbol(item.control, running: timer.isRunning))
+                        .offset(x: item.frame.minX, y: item.frame.minY)
                 }
             }
         }
-        .frame(width: model.expanded.mediaWidth, height: IslandExpandedLayout.pomodoroHeight)
     }
 
-    // "Foco · 2 de 4 · hoy 3/8", con "en pausa" o "lista para empezar" si toca
-    private func pomodoroTitle(_ timer: PomodoroTimer, at date: Date) -> String {
-        let round = timer.phase == .focus ? timer.completedInRound + 1 : timer.completedInRound
-        var parts = [timer.phase.title, "\(round) de \(model.pomodoroRounds)", "hoy \(timer.completed(on: date))/\(model.pomodoroGoal)"]
-        if case .paused = timer.state { parts.append("en pausa") }
-        if timer.state == .ready { parts.append("lista") }
-        return parts.joined(separator: " · ")
+    private static func pomodoroSymbol(_ control: IslandExpandedLayout.Control, running: Bool) -> String {
+        switch control {
+        case .pomodoroSkip: "forward.end.fill"
+        case .pomodoroStop: "stop.fill"
+        default: running ? "pause.fill" : "play.fill"
+        }
+    }
+
+    // Debajo de la cuenta atrás: cuánto dura la fase, o si está en pausa o lista para empezar
+    private static func ringCaption(_ timer: PomodoroTimer) -> String {
+        switch timer.state {
+        case .ready: "lista"
+        case .paused: "en pausa"
+        default: "de \(Int((timer.phaseDuration / 60).rounded())) min"
+        }
     }
 
     static func phaseColor(_ phase: PomodoroPhase) -> Color {

@@ -46,7 +46,7 @@ final class IslandController {
 
     private enum Expansion { case closed, peek, open }
 
-    /// Alto del lienzo de la isla: cabe la isla abierta con su sombra, con las franjas del Pomodoro y de la música
+    /// Alto del lienzo de la isla: cabe la isla abierta con su sombra, con la fila de la música y el Pomodoro
     static let canvasHeight: CGFloat = 270
 
     private let panel = IslandPanel(contentRect: .zero)
@@ -92,6 +92,8 @@ final class IslandController {
     private var screenObserver: NSObjectProtocol?
     /// Al pulsar la tarjeta de un escritorio sin atajo: ofrecer añadirlo (DesktopShortcutAssistant)
     var onMissingShortcut: (() -> Void)?
+    /// El engranaje de la isla abierta: abrir los ajustes
+    var onOpenSettings: (() -> Void)?
     private var occlusionObserver: NSObjectProtocol?
 
     init(
@@ -315,7 +317,8 @@ final class IslandController {
             hasMedia: currentHasMedia,
             hasKeepAwake: settings.keepAwakeButton,
             hasPomodoro: currentHasPomodoro,
-            hasPomodoroButton: settings.showPomodoro
+            hasPomodoroButton: settings.showPomodoro,
+            hasSettingsButton: true
         )
     }
 
@@ -446,7 +449,7 @@ final class IslandController {
     private func scrolled(_ sample: SideSwipeTracker.Sample) {
         guard let direction = sideSwipe.track(sample),
               let (point, islandWidth, topHeight) = pointerInOpenIsland(),
-              model.expanded.mediaStripContains(point, islandWidth: islandWidth, topHeight: topHeight) else { return }
+              model.expanded.musicContains(point, islandWidth: islandWidth, topHeight: topHeight) else { return }
         let control: IslandExpandedLayout.Control = direction == .left ? .next : .previous
         Logger.app.info("Gesto: \(direction == .left ? "siguiente" : "anterior", privacy: .public) en la música")
         // El botón se hunde un instante, para que se vea qué ha pasado
@@ -665,6 +668,9 @@ final class IslandController {
         Logger.app.info("Clic: \(String(describing: control), privacy: .public)")
         switch control {
         case .keepAwake: keepAwake.toggle()
+        case .settings:
+            close()
+            onOpenSettings?()
         case .pomodoroToggle, .pomodoroPlayPause: pomodoro.toggle()
         case .pomodoroSkip: pomodoro.skip()
         case .pomodoroStop: pomodoro.stop()

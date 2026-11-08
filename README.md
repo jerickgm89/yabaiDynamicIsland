@@ -59,8 +59,9 @@ Para actualizarla: `brew upgrade --cask yabaibar`.
 | Ir a un escritorio | Clic en su tarjeta |
 | Cambiar de canción | Los botones de la franja de música, o dos dedos de lado sobre ella |
 | Empezar o pausar un Pomodoro | El reloj de la esquina izquierda, o ⌥P desde cualquier app |
-| Mantener el Mac despierto | La taza de la esquina derecha |
-| Ver el menú y los ajustes | Clic en la isla, fuera de las tarjetas |
+| Mantener el Mac despierto | La taza, junto al reloj del Pomodoro |
+| Abrir los ajustes | El engranaje de la esquina derecha |
+| Ver el menú | Clic derecho en la isla, o un clic fuera de las tarjetas |
 
 **Para que el clic cambie de escritorio** hacen falta dos cosas, y «Primeros pasos» las revisa:
 
@@ -71,22 +72,19 @@ Para actualizarla: `brew upgrade --cask yabaibar`.
 
 ## Ajustes
 
-Clic en la isla › «Ajustes…». Los cambios se aplican al momento.
+El engranaje de la isla abierta abre los ajustes. Los cambios se aplican al momento.
 
 <p align="center">
   <img src="assets/ajustes.png" width="470" alt="La ventana de ajustes">
 </p>
 
-- **General:**
-  - la velocidad de la animación al cambiar de escritorio;
-  - cómo se abre la isla (con el puntero o con el atajo) y si se oculta sola;
-  - las señales de yabai y los atajos de los escritorios nuevos;
-  - los avisos de batería y el botón de mantener despierto.
-- **Música:** si se muestra, de qué app, las barras de la isla cerrada y el aviso al cambiar de canción.
-- **Pomodoro:**
-  - los tiempos (Clásico 25/5/15, Largo, Corto o los tuyos), si las fases empiezan solas y el objetivo del día;
-  - los sonidos y si se baja la música en el aviso;
-  - su atajo.
+- **General:** iniciar al arrancar, cómo se abre la isla y si se oculta sola, la velocidad de las alas y «Primeros pasos».
+- **Isla:** una isla en miniatura que cambia al encender o apagar la música, el Pomodoro y la taza, y lo que se ve en la isla cerrada (barras, anillo y avisos).
+- **Música:** de qué app.
+- **Pomodoro:** los tiempos (Clásico 25/5/15, Largo, Corto o los tuyos), si las fases empiezan solas, el objetivo del día, los sonidos y si se baja la música en el aviso.
+- **Escritorios:** las señales de yabai y los atajos de los escritorios nuevos.
+- **Atajos:** el de la isla (⌥I), el del Pomodoro (⌥P) y el gesto del trackpad.
+- **Acerca de:** la versión, tu Mac y su notch, y «Copiar datos» para los issues.
 
 ## Compatibilidad
 

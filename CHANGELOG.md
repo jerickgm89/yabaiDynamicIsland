@@ -2,10 +2,16 @@
 
 Las versiones de YabaiBar. La 3.0.0 es la primera que se instala sin compilar: con Homebrew o con el DMG de [Releases](https://github.com/jerickgm89/yabaiDynamicIsland/releases). `scripts/release.sh` copia la sección de cada versión en las notas de su release.
 
-## [3.2.1] - 2026-11-07
+## [3.3.0] - 2026-11-08
 
+- **Ícono nuevo:** la isla, con el logo de YabaiBar y tres escritorios.
 - **El gesto de 3 o 4 dedos ya no deja de funcionar tras dormir el Mac.** Al despertar, YabaiBar se conectaba al trackpad antes de que estuviera listo, y el gesto no volvía hasta reiniciar la app. Ahora se reconecta poco después de despertar, al encenderse la pantalla y cuando se conecta o se desconecta un trackpad.
 - **Mantener despierto** es ahora una taza, en lugar del sol.
+- **Ajustes nuevos:** una ventana con pestañas de ícono (General, Isla, Música, Pomodoro, Escritorios, Atajos y Acerca de). La pestaña Isla tiene una isla en miniatura que cambia al encender o apagar la música, el Pomodoro y la taza.
+- **Engranaje en la isla abierta** para abrir los ajustes. El Pomodoro y la taza pasan juntos a la izquierda.
+- **La música y el Pomodoro comparten una fila** en la isla abierta, así que la isla ya no crece hacia abajo al tener los dos.
+  - La música lleva una carátula grande con el ícono de la app, el título, el álbum, el artista y sus botones.
+  - El Pomodoro lleva un anillo con la cuenta atrás que da un pulso al cambiar de fase.
 
 ## [3.2.0] - 2026-11-04
 

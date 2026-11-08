@@ -74,13 +74,25 @@ struct IslandSizesTests {
             let expanded = IslandExpandedLayout(
                 spaces: spaces, minBodyWidth: geometry.centerWidth + 2 * layout.wingWidth,
                 maxBodyWidth: IslandExpandedLayout.maxBodyWidth(screenWidth: screenWidth, topRadius: IslandView.openTopRadius),
-                topHeight: notch.height, hasMedia: true, hasKeepAwake: true, hasPomodoro: true, hasPomodoroButton: true
+                topHeight: notch.height, hasMedia: true, hasKeepAwake: true, hasPomodoro: true, hasPomodoroButton: true,
+                hasSettingsButton: true
             )
             let islandWidth = expanded.bodyWidth + 2 * IslandView.openTopRadius
             let label = "\(screenWidth) \(notch) \(count)"
             #expect(islandWidth <= screenWidth - 2 * IslandExpandedLayout.screenMargin, "\(label)")
             #expect(expanded.cardWidth >= Self.minCardWidth, "\(label)")
             #expect(expanded.height + IslandController.shadowMargin <= IslandController.canvasHeight, "\(label)")
+            // Cada parte de la fila compartida tiene su mínimo, y sus botones no se salen de ella
+            for (section, controls) in [
+                (expanded.musicSection, IslandExpandedLayout.controls),
+                (expanded.pomodoroSection, IslandExpandedLayout.pomodoroControls),
+            ] {
+                guard let section else { continue }
+                #expect(section.width >= IslandExpandedLayout.minSharedSection, "\(label)")
+                for item in expanded.controlFrames(controls, in: section) {
+                    #expect(item.frame.maxX <= section.maxX, "\(label)")
+                }
+            }
         }
     }
 

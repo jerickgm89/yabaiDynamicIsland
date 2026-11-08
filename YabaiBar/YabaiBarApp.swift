@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var trackpad: TrackpadMonitor?
     private var signals: YabaiSignals?
     private var desktopShortcuts: DesktopShortcutAssistant?
+    private var settingsWindow: SettingsWindow?
     private var welcome: WelcomeWindow?
     private var workspaceObservers: [NSObjectProtocol] = []
     private var refreshToken: Int32 = NOTIFY_TOKEN_INVALID
@@ -66,8 +67,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             addDesktopShortcuts: { desktopShortcuts?.offer() }
         )
         self.welcome = welcome
+        let settingsWindow = SettingsWindow(settings: settings, launchAtLogin: launchAtLogin) { welcome.show() }
+        self.settingsWindow = settingsWindow
         let menu = AppMenu(
-            store: store, launchAtLogin: launchAtLogin, settingsWindow: SettingsWindow(settings: settings),
+            store: store, launchAtLogin: launchAtLogin, settingsWindow: settingsWindow,
             welcomeWindow: welcome, pomodoro: pomodoro, settings: settings
         )
         self.menu = menu
@@ -81,6 +84,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         self.island = island
         island.onMissingShortcut = { [weak desktopShortcuts] in desktopShortcuts?.offer() }
+        island.onOpenSettings = { settingsWindow.show() }
         desktopShortcuts?.onAdded = { island.shortcutsAdded($0) }
         battery = BatteryMonitor { state in island.batteryChanged(state) }
         // Cada evento del Pomodoro: el aviso de la isla, y el sonido y la música
@@ -211,6 +215,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let flags = Set(items.map(\.name))
                 if flags.contains("bienvenida") {
                     welcome?.saveSnapshot()
+                    continue
+                }
+                if let name = items.first(where: { $0.name == "ajustes" })?.value,
+                   let tab = SettingsWindow.Tab.allCases.first(where: { $0.title.lowercased().hasPrefix(name.lowercased()) }) {
+                    settingsWindow?.saveSnapshot(tab: tab)
                     continue
                 }
                 let peek: IslandPeek? = flags.contains("aviso") ? .track

@@ -1,29 +1,108 @@
 import AppKit
 import Carbon.HIToolbox
 import SwiftUI
+import os
 
-// La ventana de ajustes, que se abre desde el menú. La app no sale en el Dock: al abrirla se activa, para que la
-// ventana quede delante y reciba el teclado (el grabador del atajo lo necesita), y al cerrarla se desactiva.
+// La ventana de ajustes, con pestañas de ícono en la barra de la ventana, como las preferencias de macOS. Se abre
+// desde el engranaje de la isla abierta y desde el menú. La app no sale en el Dock: al abrirla se activa, para que la
+// ventana quede delante y reciba el teclado (el grabador de atajos lo necesita), y al cerrarla se desactiva.
 @MainActor
 final class SettingsWindow: NSObject, NSWindowDelegate {
-    private let settings: AppSettings
-    private var window: NSWindow?
+    enum Tab: Int, CaseIterable {
+        case general, island, music, pomodoro, desktops, shortcuts, about
 
-    init(settings: AppSettings) {
-        self.settings = settings
+        var title: String {
+            switch self {
+            case .general: "General"
+            case .island: "Isla"
+            case .music: "Música"
+            case .pomodoro: "Pomodoro"
+            case .desktops: "Escritorios"
+            case .shortcuts: "Atajos"
+            case .about: "Acerca de"
+            }
+        }
+
+        var symbol: String {
+            switch self {
+            case .general: "gearshape"
+            case .island: "capsule"
+            case .music: "music.note"
+            case .pomodoro: "timer"
+            case .desktops: "square.grid.2x2"
+            case .shortcuts: "keyboard"
+            case .about: "info.circle"
+            }
+        }
+
+        /// Cada pestaña mide lo que su contenido: la ventana cambia de alto al pasar de una a otra
+        var height: CGFloat {
+            switch self {
+            case .general: 470
+            case .island: 540
+            case .music: 260
+            case .pomodoro: 720
+            case .desktops: 400
+            case .shortcuts: 420
+            case .about: 470
+            }
+        }
     }
 
-    func show() {
+    static let width: CGFloat = 560
+    /// Lo que ocupa la barra con las pestañas, encima del contenido
+    static let toolbarHeight: CGFloat = 90
+
+    private let settings: AppSettings
+    private let launchAtLogin: LaunchAtLogin
+    private let showWelcome: @MainActor () -> Void
+    private var window: NSWindow?
+    private var tabs: NSTabViewController?
+    /// Al pasar a «Primeros pasos» la app sigue activa: esa ventana necesita el teclado
+    private var handingOff = false
+
+    init(settings: AppSettings, launchAtLogin: LaunchAtLogin, showWelcome: @escaping @MainActor () -> Void) {
+        self.settings = settings
+        self.launchAtLogin = launchAtLogin
+        self.showWelcome = showWelcome
+    }
+
+    func show(tab: Tab? = nil) {
         let window = self.window ?? makeWindow()
         self.window = window
+        if let tab { tabs?.selectedTabViewItemIndex = tab.rawValue }
         NSApp.activate()
         window.makeKeyAndOrderFront(nil)
     }
 
     private func makeWindow() -> NSWindow {
-        let window = NSWindow(contentViewController: NSHostingController(rootView: SettingsView(settings: settings)))
-        window.title = "Ajustes de YabaiBar"
+        // Ninguna pestaña más alta que la pantalla (MacBook Air o escalas de texto grande): el Form hace scroll
+        let available = (NSScreen.main?.visibleFrame.height).map { $0 - Self.toolbarHeight } ?? 720
+        let tabs = NSTabViewController()
+        tabs.tabStyle = .toolbar
+        tabs.transitionOptions = [.crossfade, .allowUserInteraction]
+        for tab in Tab.allCases {
+            let content = SettingsTabView(
+                tab: tab, settings: settings, launchAtLogin: launchAtLogin,
+                showWelcome: { [weak self] in
+                    self?.handingOff = true
+                    self?.window?.close()
+                    self?.showWelcome()
+                }
+            )
+            let height = min(tab.height, available)
+            let controller = NSHostingController(rootView: content.frame(width: Self.width, height: height))
+            controller.sizingOptions = .preferredContentSize
+            controller.title = tab.title
+            let item = NSTabViewItem(viewController: controller)
+            item.label = tab.title
+            item.image = NSImage(systemSymbolName: tab.symbol, accessibilityDescription: tab.title)
+            tabs.addTabViewItem(item)
+        }
+        self.tabs = tabs
+        let window = NSWindow(contentViewController: tabs)
         window.styleMask = [.titled, .closable]
+        window.toolbarStyle = .preference
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.center()
@@ -33,186 +112,37 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     // Vuelve al frente la app que se estaba usando. Una grabación a medias se cancela, para que el atajo vuelva a funcionar
     func windowWillClose(_ notification: Notification) {
         settings.isRecordingShortcut = false
-        NSApp.deactivate()
+        if !handingOff { NSApp.deactivate() }
+        handingOff = false
     }
-}
 
-// Tres pestañas: lo general de la isla, la música y el Pomodoro. Cada una se desplaza si no cabe
-struct SettingsView: View {
-    @Bindable var settings: AppSettings
+    // Al pasar a una pestaña más alta, la ventana crece hacia abajo y AppKit no la recoloca: se sube si se sale
+    func windowDidResize(_ notification: Notification) {
+        guard let window, let visible = window.screen?.visibleFrame, window.frame.minY < visible.minY else { return }
+        window.setFrameOrigin(NSPoint(x: window.frame.minX, y: min(visible.minY, visible.maxY - window.frame.height)))
+    }
 
-    var body: some View {
-        TabView {
-            general.tabItem { Label("General", systemImage: "gearshape") }
-            music.tabItem { Label("Música", systemImage: "music.note") }
-            pomodoro.tabItem { Label("Pomodoro", systemImage: "timer") }
+    #if DEBUG
+    /// yabaibar://snapshot?ajustes=<pestaña>: la ventana con su barra, en ~/Library/Caches/com.jerickdev.yabaibar/ajustes.png
+    func saveSnapshot(tab: Tab) {
+        show(tab: tab)
+        Task {
+            try? await Task.sleep(for: .milliseconds(700))
+            guard let frame = window?.contentView?.superview,
+                  let bitmap = frame.bitmapImageRepForCachingDisplay(in: frame.bounds) else { return }
+            frame.cacheDisplay(in: frame.bounds, to: bitmap)
+            let url = URL.cachesDirectory.appending(path: "com.jerickdev.yabaibar/ajustes.png")
+            try? bitmap.representation(using: .png, properties: [:])?.write(to: url)
+            let size = window?.frame.size ?? .zero
+            Logger.app.info("Snapshot de los ajustes (\(tab.title, privacy: .public)): \(Int(size.width))×\(Int(size.height))")
         }
-        .frame(width: 480, height: 520)
     }
-
-    private var general: some View {
-        Form {
-            Section {
-                Picker("Velocidad de las alas", selection: $settings.switchSpeed) {
-                    ForEach(SwitchSpeed.allCases) { Text($0.title).tag($0) }
-                }
-            } header: {
-                Text("Al cambiar de escritorio")
-            } footer: {
-                Text("Lo que tardan las alas en recogerse hacia el notch y volver a salir. El deslizamiento del escritorio es de macOS y no cambia.")
-                    .foregroundStyle(.secondary)
-            }
-
-            Section {
-                Toggle("Al pasar el puntero", isOn: $settings.openOnHover)
-                LabeledContent("Atajo") {
-                    ShortcutRecorder(
-                        shortcut: $settings.toggleShortcut, defaultShortcut: .defaultToggle, error: settings.shortcutError,
-                        settings: settings
-                    )
-                }
-                Toggle("Ocultar sola", isOn: $settings.autoHide)
-                Stepper(value: $settings.autoHideDelay, in: AppSettings.autoHideDelays) {
-                    Text("Al cabo de \(settings.autoHideDelay) s")
-                }
-                .disabled(!settings.autoHide)
-            } header: {
-                Text("Abrir la isla")
-            } footer: {
-                Text("3 o 4 dedos hacia abajo en el trackpad, o el atajo, abren y cierran la isla desde cualquier app. Abierta así, si llevas el puntero a la isla ya no se oculta sola: se cierra al sacarlo.")
-                    .foregroundStyle(.secondary)
-            }
-
-            Section {
-                Toggle("Señales automáticas", isOn: $settings.autoYabaiSignals)
-            } header: {
-                Text("yabai")
-            } footer: {
-                Text("YabaiBar le pide a yabai que la avise al crear, cerrar o minimizar ventanas y al cambiar los espacios o las pantallas, sin tocar tu yabairc. Si yabai se reinicia, las vuelve a añadir. Al apagarlo se quitan, también las de tu yabairc si usan las mismas etiquetas (yb_*), hasta que reinicies yabai.")
-                    .foregroundStyle(.secondary)
-            }
-
-            Section {
-                Toggle("Añadir los atajos de los escritorios nuevos", isOn: $settings.autoDesktopShortcuts)
-            } header: {
-                Text("Escritorios")
-            } footer: {
-                Text("La isla te lleva a cada escritorio pulsando su atajo «Ir al escritorio N» de Mission Control. Activado, los escritorios del 1 al 9 que no lo tengan lo reciben solos, con el mismo modificador que los demás (⌥5 si los otros son ⌥1…⌥4). Solo se añaden los que faltan, y la primera vez se guarda una copia de tus atajos en Preferencias.")
-                    .foregroundStyle(.secondary)
-            }
-
-            Section {
-                Toggle("Batería y cargador", isOn: $settings.batteryAlerts)
-                Toggle("Botón de mantener despierto", isOn: $settings.keepAwakeButton)
-            } header: {
-                Text("Actividades")
-            } footer: {
-                Text("Avisos al enchufar o desenchufar el cargador y al bajar del 20 % y del 10 %, y una taza en la isla abierta que impide que el Mac se duerma hasta que lo apagues.")
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .formStyle(.grouped)
-    }
-
-    private var music: some View {
-        Form {
-            Section {
-                Toggle("Mostrar lo que suena", isOn: $settings.showNowPlaying)
-                Group {
-                    Picker("De", selection: $settings.nowPlayingSource) {
-                        ForEach(NowPlayingSource.allCases) { Text($0.title).tag($0) }
-                    }
-                    Toggle("Barras en la isla cerrada", isOn: $settings.showMusicBars)
-                    Toggle("Avisar al cambiar de canción", isOn: $settings.announceTracks)
-                }
-                .disabled(!settings.showNowPlaying)
-            } header: {
-                Text("Música")
-            } footer: {
-                Text("Con la isla abierta, la canción, la carátula y los botones; dos dedos de lado sobre ella cambian de canción. Lo lee del «Ahora suena» de macOS: no se envía nada a internet.")
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .formStyle(.grouped)
-    }
-
-    private var pomodoro: some View {
-        Form {
-            Section {
-                Toggle("Mostrar el Pomodoro", isOn: $settings.showPomodoro)
-                Toggle("Anillo en la isla cerrada", isOn: $settings.showPomodoroRing)
-                    .disabled(!settings.showPomodoro)
-            } footer: {
-                Text("Un temporizador en la esquina izquierda de la isla abierta y, mientras corre, una franja con la cuenta atrás y los botones. En la isla cerrada, un anillo de progreso y un aviso al cambiar de fase. Apagarlo termina la sesión.")
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("Tiempos") {
-                Picker("Preset", selection: $settings.pomodoroPreset) {
-                    ForEach(PomodoroPreset.allCases) { Text($0.title).tag($0) }
-                }
-                Stepper(value: $settings.pomodoroFocusMinutes, in: AppSettings.focusMinutes, step: 5) {
-                    Text("Foco: \(settings.pomodoroFocusMinutes) min")
-                }
-                Stepper(value: $settings.pomodoroShortBreakMinutes, in: AppSettings.shortBreakMinutes) {
-                    Text("Descanso corto: \(settings.pomodoroShortBreakMinutes) min")
-                }
-                Stepper(value: $settings.pomodoroLongBreakMinutes, in: AppSettings.longBreakMinutes, step: 5) {
-                    Text("Descanso largo: \(settings.pomodoroLongBreakMinutes) min")
-                }
-                Stepper(value: $settings.pomodoroRounds, in: AppSettings.pomodoroRoundsRange) {
-                    Text("Descanso largo cada \(settings.pomodoroRounds) focos")
-                }
-            }
-            .disabled(!settings.showPomodoro)
-
-            Section {
-                LabeledContent("Atajo") {
-                    ShortcutRecorder(
-                        shortcut: $settings.pomodoroShortcut, defaultShortcut: .defaultPomodoro,
-                        error: settings.pomodoroShortcutError, settings: settings
-                    )
-                }
-                Toggle("Empezar los descansos solos", isOn: $settings.pomodoroAutoStartBreaks)
-                Toggle("Empezar el foco solo tras el descanso", isOn: $settings.pomodoroAutoStartFocus)
-                Picker("Avisar antes de terminar", selection: $settings.pomodoroWarning) {
-                    ForEach(AppSettings.pomodoroWarnings, id: \.self) { seconds in
-                        Text(seconds == 0 ? "No" : "\(seconds) s").tag(seconds)
-                    }
-                }
-                Stepper(value: $settings.pomodoroDailyGoal, in: AppSettings.dailyGoals) {
-                    Text("Objetivo del día: \(settings.pomodoroDailyGoal) pomodoros")
-                }
-            } header: {
-                Text("Sesión")
-            } footer: {
-                Text("El atajo inicia, pausa o reanuda el Pomodoro desde cualquier app. Los cambios de tiempo valen desde la siguiente fase; si cambias un tiempo a mano, el preset pasa a «Personalizado».")
-                    .foregroundStyle(.secondary)
-            }
-            .disabled(!settings.showPomodoro)
-
-            Section {
-                Toggle("Sonidos", isOn: $settings.pomodoroSound)
-                Toggle("Bajar la música en el aviso", isOn: $settings.pomodoroDuckMusic)
-                Stepper(value: $settings.pomodoroDuckLevel, in: AppSettings.duckLevels, step: 5) {
-                    Text("Hasta el \(settings.pomodoroDuckLevel) % de tu volumen")
-                }
-                .disabled(!settings.pomodoroDuckMusic)
-            } header: {
-                Text("Avisos")
-            } footer: {
-                Text("En el aviso suena una nota de kalimba y, si suena música, el volumen baja hasta el final. Al terminar el foco suena un cuenco y al terminar el descanso, dos notas; la música vuelve a tu volumen. Si tocas el volumen mientras está bajado, se queda como lo dejes.")
-                    .foregroundStyle(.secondary)
-            }
-            .disabled(!settings.showPomodoro)
-        }
-        .formStyle(.grouped)
-    }
+    #endif
 }
 
 // Graba un atajo nuevo: al pulsarlo escucha la siguiente tecla. Esc cancela y ⌫ deja el atajo vacío. Mientras uno
 // graba, no hay ningún atajo global registrado (`isRecordingShortcut`): Carbon se quedaría la tecla
-private struct ShortcutRecorder: View {
+struct ShortcutRecorder: View {
     @Binding var shortcut: HotKeyShortcut?
     let defaultShortcut: HotKeyShortcut
     /// Por qué no se pudo registrar, si pasó
@@ -239,6 +169,10 @@ private struct ShortcutRecorder: View {
             }
         }
         .onDisappear(perform: stopRecording)
+        // Si otro grabador termina, o se cierra la ventana, este deja de grabar y quita su monitor
+        .onChange(of: settings.isRecordingShortcut) { _, recordingNow in
+            if !recordingNow { stopRecording() }
+        }
     }
 
     private var title: String {

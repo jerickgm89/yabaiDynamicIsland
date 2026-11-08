@@ -44,11 +44,12 @@ enum PomodoroPreset: String, CaseIterable, Identifiable {
 
     var id: Self { self }
 
-    var title: String {
+    /// El nombre corto, para las tarjetas de los ajustes
+    var name: String {
         switch self {
-        case .classic: "Clásico (25/5/15)"
-        case .long: "Largo (50/10/30)"
-        case .short: "Corto (15/3/10)"
+        case .classic: "Clásico"
+        case .long: "Largo"
+        case .short: "Corto"
         case .custom: "Personalizado"
         }
     }

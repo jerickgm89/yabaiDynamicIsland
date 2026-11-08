@@ -57,8 +57,8 @@ struct StatusItemLayoutTests {
     }
 }
 
-// Cuatro espacios: cuerpo de 580 pt en una isla de 618; el botón de 26 pt va a 14 del borde derecho del cuerpo
-// (x = 559) y centrado en la franja del notch de 38 pt (y = 6)
+// Cuatro espacios: cuerpo de 580 pt en una isla de 618. La taza de 26 pt va arriba a la izquierda, a 14 del borde del
+// cuerpo (x = 33) y centrada en la franja del notch de 38 pt (y = 6); el engranaje, a la derecha (x = 559)
 struct KeepAwakeLayoutTests {
     private func layout(spaces count: Int = 4, minBodyWidth: CGFloat = 400) -> IslandExpandedLayout {
         let spaces = (1...count).map { summary($0, apps: 0, focused: $0 == 1) }
@@ -67,17 +67,38 @@ struct KeepAwakeLayoutTests {
         )
     }
 
-    @Test func theButtonSitsInTheTopRightCorner() {
-        #expect(layout().keepAwakeFrame(islandWidth: 618, topHeight: 38) == CGRect(x: 559, y: 6, width: 26, height: 26))
-        #expect(layout().control(at: CGPoint(x: 572, y: 19), islandWidth: 618, topHeight: 38) == .keepAwake)
-        // La franja de música sigue respondiendo debajo
-        #expect(layout().control(at: CGPoint(x: 570, y: 150), islandWidth: 618, topHeight: 38) == .next)
+    @Test func theCupSitsInTheTopLeftCorner() {
+        #expect(layout().keepAwakeFrame(islandWidth: 618, topHeight: 38) == CGRect(x: 33, y: 6, width: 26, height: 26))
+        #expect(layout().control(at: CGPoint(x: 46, y: 19), islandWidth: 618, topHeight: 38) == .keepAwake)
+        // La música sigue respondiendo debajo
+        #expect(layout().control(at: CGPoint(x: 570, y: 174), islandWidth: 618, topHeight: 38) == .next)
     }
 
     // Con pocos espacios, el cuerpo deja sitio al botón a cada lado de las alas
     @Test func makesRoomNextToTheWings() {
         let expected: CGFloat = 364 + 2 * (26 + 14)
         #expect(layout(spaces: 2, minBodyWidth: 364).bodyWidth == expected)
+    }
+
+    // Con el Pomodoro y la taza a la izquierda, cada lado deja el ancho de los dos botones (26 + 4 + 26), para que las
+    // alas sigan centradas aunque a la derecha solo esté el engranaje
+    @Test func bothLeftButtonsReserveTheirWidthOnEachSide() {
+        let spaces = [summary(1, apps: 0, focused: true)]
+        let layout = IslandExpandedLayout(
+            spaces: spaces, minBodyWidth: 364, maxBodyWidth: 2000, topHeight: 38,
+            hasKeepAwake: true, hasPomodoroButton: true, hasSettingsButton: true
+        )
+        let expected: CGFloat = 364 + 2 * (56 + 14)
+        #expect(layout.bodyWidth == expected)
+    }
+
+    @Test func theGearSitsInTheTopRightCorner() {
+        let spaces = (1...4).map { summary($0, apps: 0, focused: $0 == 1) }
+        let layout = IslandExpandedLayout(
+            spaces: spaces, minBodyWidth: 400, maxBodyWidth: 2000, topHeight: 38, hasSettingsButton: true
+        )
+        #expect(layout.settingsButtonFrame(islandWidth: 618, topHeight: 38) == CGRect(x: 559, y: 6, width: 26, height: 26))
+        #expect(layout.control(at: CGPoint(x: 572, y: 19), islandWidth: 618, topHeight: 38) == .settings)
     }
 
     @Test func noButtonWhenItIsOff() {

@@ -132,15 +132,21 @@ final class SetupStatus {
         )
         let newRows = SetupChecklist.rows(for: inputs)
         if newRows != rows { rows = newRows }
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
-        let report = SetupChecklist.screenReport(
-            model: MacModels.current, appVersion: version,
-            system: "macOS \(ProcessInfo.processInfo.operatingSystemVersionString)", screens: screens
-        )
+        let report = Self.currentScreenReport(screens: screens)
         if report != screenReport { screenReport = report }
     }
 
-    private static func describe(_ screen: NSScreen) -> SetupChecklist.Screen {
+    /// Lo que copia «Copiar datos», aquí y en Ajustes › Acerca de
+    static func currentScreenReport(screens: [SetupChecklist.Screen]? = nil) -> String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        return SetupChecklist.screenReport(
+            model: MacModels.current, appVersion: version,
+            system: "macOS \(ProcessInfo.processInfo.operatingSystemVersionString)",
+            screens: screens ?? NSScreen.screens.map { describe($0) }
+        )
+    }
+
+    static func describe(_ screen: NSScreen) -> SetupChecklist.Screen {
         let geometry = screen.notchGeometry
         return SetupChecklist.Screen(
             name: screen.localizedName, size: screen.frame.size, scale: screen.backingScaleFactor,

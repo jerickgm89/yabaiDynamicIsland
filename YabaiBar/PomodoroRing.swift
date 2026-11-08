@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-// El anillo del Pomodoro en la isla cerrada, con capas de Core Animation: el arco crece desde las doce, en el
+// El anillo del Pomodoro, en la isla cerrada (fino) y en la fila de la isla abierta (grueso), con capas de Core Animation: el arco crece desde las doce, en el
 // sentido del reloj, con una sola animación que dura lo que queda de la fase. La anima el sistema de ventanas y la
 // app no redibuja nada mientras corre (ver MusicBars).
 struct PomodoroRing: NSViewRepresentable {
@@ -12,28 +12,46 @@ struct PomodoroRing: NSViewRepresentable {
     var color: NSColor
     /// Cambia al empezar, pausar o reanudar una fase: solo entonces se vuelve a crear la animación
     var key: String
+    /// Fino en la isla cerrada; grueso en la fila del Pomodoro de la isla abierta
+    var lineWidth: CGFloat = PomodoroRingView.defaultLineWidth
+    /// Con «Reducir movimiento», sin el pulso al empezar una fase
+    var animated = true
 
     func makeNSView(context: Context) -> PomodoroRingView { PomodoroRingView() }
 
     func updateNSView(_ view: PomodoroRingView, context: Context) {
+        view.lineWidth = lineWidth
+        view.animated = animated
         view.update(progress: progress, remaining: remaining, color: color, key: key)
     }
 }
 
 final class PomodoroRingView: NSView {
-    private static let lineWidth: CGFloat = 2.2
+    static let defaultLineWidth: CGFloat = 2.2
     private static let animationKey = "progress"
 
     private let track = CAShapeLayer()
     private let arc = CAShapeLayer()
     private var currentKey: String?
+    /// La fase de la última clave, para notar el cambio de foco a descanso (o al revés) y dar un pulso
+    private var currentPhase: Substring?
+    /// La última clave era de una fase lista para empezar: al arrancarla también hay pulso
+    private var wasReady = false
+    var animated = true
+    var lineWidth = PomodoroRingView.defaultLineWidth {
+        didSet {
+            guard lineWidth != oldValue else { return }
+            for shape in [track, arc] { shape.lineWidth = lineWidth }
+            needsLayout = true
+        }
+    }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
         for shape in [track, arc] {
             shape.fillColor = nil
-            shape.lineWidth = Self.lineWidth
+            shape.lineWidth = lineWidth
             shape.lineCap = .round
             layer?.addSublayer(shape)
         }
@@ -46,7 +64,7 @@ final class PomodoroRingView: NSView {
     // Desde las doce y en el sentido del reloj. Las capas tienen la y hacia arriba
     override func layout() {
         super.layout()
-        let inset = Self.lineWidth / 2
+        let inset = lineWidth / 2
         let rect = bounds.insetBy(dx: inset, dy: inset)
         let path = CGMutablePath()
         path.addArc(
@@ -69,7 +87,14 @@ final class PomodoroRingView: NSView {
         defer { CATransaction.commit() }
         // SwiftUI vuelve a llamar por cualquier cambio de la isla: la animación solo se rehace si cambió la fase
         guard key != currentKey else { return }
+        // Al empezar una fase (otra fase, o la que estaba lista), no al pausar ni al reanudar, el arco engorda un
+        // instante: un pulso que se nota sin mirar. La clave empieza por la fase y lleva el estado
+        let phase = key.prefix { $0 != " " }
+        let starts = remaining != nil && (wasReady || currentPhase.map { $0 != phase } ?? false)
+        if starts && animated { pulse() }
         currentKey = key
+        currentPhase = phase
+        wasReady = key.hasSuffix("ready")
         arc.removeAnimation(forKey: Self.animationKey)
         arc.strokeEnd = progress
         guard let remaining, remaining > 0 else { return }
@@ -81,5 +106,14 @@ final class PomodoroRingView: NSView {
         grow.fillMode = .forwards
         grow.isRemovedOnCompletion = false
         arc.add(grow, forKey: Self.animationKey)
+    }
+
+    private func pulse() {
+        let pulse = CAKeyframeAnimation(keyPath: "lineWidth")
+        pulse.values = [lineWidth, lineWidth * 1.8, lineWidth]
+        pulse.keyTimes = [0, 0.35, 1]
+        pulse.duration = 0.6
+        pulse.timingFunctions = [CAMediaTimingFunction(name: .easeOut), CAMediaTimingFunction(name: .easeIn)]
+        for shape in [track, arc] { shape.add(pulse, forKey: "pulse") }
     }
 }
