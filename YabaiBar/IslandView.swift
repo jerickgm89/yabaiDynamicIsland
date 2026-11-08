@@ -53,7 +53,7 @@ final class IslandModel {
 
     /// Aviso de unos segundos en lugar de los espacios: la canción nueva o la batería
     var peek: IslandPeek?
-    /// Mantener despierto activado: el sol de la isla abierta se enciende
+    /// Mantener despierto activado: la taza de la isla abierta se enciende
     var keepAwakeActive = false
     /// El Pomodoro, si hay sesión; la franja solo se ve con la isla abierta y `expanded.hasPomodoro`
     var pomodoro: PomodoroTimer?
@@ -408,12 +408,12 @@ struct IslandView: View {
         .frame(maxWidth: .infinity, alignment: .trailing)
     }
 
-    // Al final del ala derecha: las barras de la música y el sol de mantener despierto
+    // Al final del ala derecha: las barras de la música y la taza de mantener despierto
     @ViewBuilder private func statusItem(_ item: IslandLayout.StatusItem) -> some View {
         switch item {
         case .music: musicBars
         case .keepAwake:
-            Image(systemName: "sun.max.fill")
+            Image(systemName: "cup.and.saucer.fill")
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.yellow.opacity(0.9))
         case .pomodoro: pomodoroRing
@@ -454,12 +454,12 @@ struct IslandView: View {
 
     // MARK: - Actividades
 
-    // El sol de la isla abierta, arriba a la derecha, en la franja del notch. Los clics los resuelve
+    // La taza de la isla abierta, arriba a la derecha, en la franja del notch. Los clics los resuelve
     // IslandController con IslandExpandedLayout.control, como los de la música
     @ViewBuilder private var keepAwakeButton: some View {
         if let frame = model.expanded.keepAwakeFrame(islandWidth: model.islandWidth, topHeight: model.height) {
             let hovered = model.hoveredControl == .keepAwake
-            Image(systemName: model.keepAwakeActive ? "sun.max.fill" : "sun.max")
+            Image(systemName: model.keepAwakeActive ? "cup.and.saucer.fill" : "cup.and.saucer")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(model.keepAwakeActive ? .yellow : .white.opacity(hovered ? 0.9 : 0.55))
                 .frame(width: frame.width, height: frame.height)

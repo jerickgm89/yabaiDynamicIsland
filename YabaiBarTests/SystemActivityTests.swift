@@ -45,10 +45,10 @@ private func summary(_ index: Int, apps: Int, focused: Bool = false) -> SpaceSum
 struct StatusItemLayoutTests {
     private let spaces = [summary(1, apps: 1, focused: true), summary(2, apps: 1), summary(3, apps: 0), summary(4, apps: 1)]
 
-    // 86 pt de espacios; cada indicador suma 6 de separación y su ancho: música 14, sol 12
+    // 86 pt de espacios; cada indicador suma 6 de separación y su ancho: música 14, taza 14
     @Test func eachItemWidensTheWings() {
-        #expect(IslandLayout(spaces: spaces, statusItems: [.keepAwake]).wingWidth == 104)
-        #expect(IslandLayout(spaces: spaces, statusItems: [.music, .keepAwake]).wingWidth == 124)
+        #expect(IslandLayout(spaces: spaces, statusItems: [.keepAwake]).wingWidth == 106)
+        #expect(IslandLayout(spaces: spaces, statusItems: [.music, .keepAwake]).wingWidth == 126)
     }
 
     // El orden no depende de quién los pida

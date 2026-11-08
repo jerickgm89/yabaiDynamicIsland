@@ -59,7 +59,7 @@ Para actualizarla: `brew upgrade --cask yabaibar`.
 | Ir a un escritorio | Clic en su tarjeta |
 | Cambiar de canción | Los botones de la franja de música, o dos dedos de lado sobre ella |
 | Empezar o pausar un Pomodoro | El reloj de la esquina izquierda, o ⌥P desde cualquier app |
-| Mantener el Mac despierto | El sol de la esquina derecha |
+| Mantener el Mac despierto | La taza de la esquina derecha |
 | Ver el menú y los ajustes | Clic en la isla, fuera de las tarjetas |
 
 **Para que el clic cambie de escritorio** hacen falta dos cosas, y «Primeros pasos» las revisa:

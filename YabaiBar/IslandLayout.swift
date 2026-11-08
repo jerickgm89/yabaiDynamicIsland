@@ -11,7 +11,8 @@ struct IslandLayout: Equatable {
         var width: CGFloat {
             switch self {
             case .music: IslandLayout.musicIndicatorWidth
-            case .keepAwake: 12
+            // La taza es algo más ancha que alta
+            case .keepAwake: 14
             case .pomodoro: IslandLayout.pomodoroRingSize
             }
         }

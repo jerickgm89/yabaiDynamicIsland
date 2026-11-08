@@ -107,7 +107,7 @@ struct SettingsView: View {
             } header: {
                 Text("Actividades")
             } footer: {
-                Text("Avisos al enchufar o desenchufar el cargador y al bajar del 20 % y del 10 %, y un sol en la isla abierta que impide que el Mac se duerma hasta que lo apagues.")
+                Text("Avisos al enchufar o desenchufar el cargador y al bajar del 20 % y del 10 %, y una taza en la isla abierta que impide que el Mac se duerma hasta que lo apagues.")
                     .foregroundStyle(.secondary)
             }
         }
