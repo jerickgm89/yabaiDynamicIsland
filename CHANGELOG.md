@@ -2,6 +2,10 @@
 
 Las versiones de YabaiBar. La 3.0.0 es la primera que se instala sin compilar: con Homebrew o con el DMG de [Releases](https://github.com/jerickgm89/yabaiDynamicIsland/releases). `scripts/release.sh` copia la sección de cada versión en las notas de su release.
 
+## [3.2.1] - 2026-11-07
+
+- **El gesto de 3 o 4 dedos ya no deja de funcionar tras dormir el Mac.** Al despertar, YabaiBar se conectaba al trackpad antes de que estuviera listo, y el gesto no volvía hasta reiniciar la app. Ahora se reconecta poco después de despertar, al encenderse la pantalla y cuando se conecta o se desconecta un trackpad.
+
 ## [3.2.0] - 2026-11-04
 
 - **Atajos de escritorio automáticos:**
