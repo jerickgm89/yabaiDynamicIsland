@@ -72,6 +72,7 @@ final class IslandController {
     private let tools: DevTools
     private let calendar: CalendarStore
     private let clipboard: ClipboardStore
+    private let tray: TrayStore
     private var geometry: NotchGeometry?
     private var screenWidth: CGFloat = 0
     // Copias de lo dibujado. No se leen del modelo dentro de render(): withObservationTracking
@@ -124,11 +125,12 @@ final class IslandController {
     init(
         store: SpacesStore, icons: AppIcons, menu: AppMenu, focuser: ShortcutFocuser, settings: AppSettings,
         media: NowPlayingStore, keepAwake: KeepAwake, pomodoro: PomodoroStore, calendar: CalendarStore,
-        clipboard: ClipboardStore, tools: DevTools
+        clipboard: ClipboardStore, tray: TrayStore, tools: DevTools
     ) {
         self.store = store
         self.calendar = calendar
         self.clipboard = clipboard
+        self.tray = tray
         self.icons = icons
         self.focuser = focuser
         self.settings = settings
@@ -145,6 +147,16 @@ final class IslandController {
         hosting.onPress = { [weak self] in self?.pressCard() ?? false }
         hosting.onRelease = { [weak self] in self?.releaseCard() }
         hosting.onScroll = { [weak self] sample in self?.scrolled(sample) }
+        // Arrastrar un archivo desde la bandeja hacia otra app, y soltar uno sobre la isla. El destino va en el contenedor: AppKit sube
+        // por las vistas hasta la primera registrada para el tipo, y NSHostingView no deja sobrescribir sus métodos de destino
+        hosting.onDragOut = { [weak self] in self?.dragOutURLs() ?? [] }
+        hosting.onDragEnded = { [weak self] in self?.updateHoveredCard() }
+        let dropHandlers = FileDropHandlers(
+            over: { [weak self] in self?.fileDragOver() ?? false },
+            left: { [weak self] in self?.fileDragLeft() },
+            dropped: { [weak self] urls in self?.fileDropped(urls) ?? false }
+        )
+        container.dropHandlers = dropHandlers
         // El hosting va dentro de un contenedor y no como contentView: si lo es, intenta ajustar (y animar)
         // el tamaño de la ventana a la isla, choca con nuestros setFrame y, con cambios de espacio muy
         // seguidos, AppKit lanza una excepción por demasiadas pasadas de restricciones y cierra la app
@@ -163,6 +175,7 @@ final class IslandController {
         updateCalendarBadge()
         calendar.onNotice = { [weak self] event, moment in self?.calendarNotice(event, at: moment) }
         observeClipboard()
+        observeTray()
         clipboard.onColorCopied = { [weak self] hex in self?.colorCopied(hex) }
         tools.claude.onOutcome = { [weak self] outcome in self?.claudeOutcome(outcome) }
         tools.git.onNotice = { [weak self] notice in self?.gitNotice(notice) }
@@ -460,6 +473,16 @@ final class IslandController {
         }
     }
 
+    // Lo que enseña el módulo Bandeja: sus archivos y cuáles faltan
+    private func observeTray() {
+        withObservationTracking {
+            let snapshot = tray.snapshot
+            if snapshot != model.tray { model.tray = snapshot }
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.observeTray() }
+        }
+    }
+
     // Lo que enseña el módulo Calendario y el punto azul de Utilidades (un evento empieza en menos de 15 min). El módulo se lee dentro
     // del seguimiento, como las filas de Puertos y Docker; el punto, como el de Claude, se lee dentro y se aplica fuera para que
     // `apply()` no registre sus lecturas aquí
@@ -540,6 +563,8 @@ final class IslandController {
         let visible = expansion == .open ? currentTab : nil
         tools.setVisibleTab(visible)
         calendar.setVisible(visible == .utilities)
+        // La bandeja mira el disco al ver la pestaña (no hay temporizador): lo movido o borrado se nota al abrirla
+        if visible == .utilities { tray.refresh() }
         // El punto de Git avisa hasta que abres la pestaña
         if visible == .developer, developerNews != nil {
             developerNews = nil
@@ -736,6 +761,8 @@ final class IslandController {
             model.hoveredControl = nil
             model.pressedControl = nil
             model.hoveredRow = nil
+            // Un arrastre que no avisó de su salida no deja la bandeja resaltada para la próxima vez
+            model.trayTargeted = false
         }
         settleWindow()
         if wasOpen { Logger.app.info("Isla cerrada") }
@@ -910,6 +937,9 @@ final class IslandController {
             at: point, islandWidth: islandWidth, topHeight: topHeight, mode: shown.mode, state: shown.state,
             entryCount: shown.rows.count, swatchCount: shown.colors.count
         ) { return .clipboard(control) }
+        if let control = model.expanded.trayControl(
+            at: point, islandWidth: islandWidth, topHeight: topHeight, ids: model.tray?.items.map(\.id) ?? []
+        ) { return .tray(control) }
         return model.expanded.moduleControl(
             at: point, islandWidth: islandWidth, topHeight: topHeight, rows: model.moduleRows
         ).map { .module($0) }
@@ -977,6 +1007,9 @@ final class IslandController {
         // Sin el payload de los módulos: la fila de un proyecto de Compose lleva el nombre de la carpeta del usuario
         if case .module(let module) = control {
             Logger.app.info("Clic: módulo \(module.module.rawValue, privacy: .public) \(module.action.rawValue, privacy: .public)")
+        } else if case .tray(let control) = control {
+            // Sin el identificador, que apunta a un archivo
+            Logger.app.info("Clic: bandeja \(control.isRemove ? "quitar" : "archivo", privacy: .public)")
         } else {
             Logger.app.info("Clic: \(String(describing: control), privacy: .public)")
         }
@@ -985,6 +1018,7 @@ final class IslandController {
         case .module(let control): perform(module: control)
         case .calendar(let control): perform(calendar: control)
         case .clipboard(let control): perform(clipboard: control)
+        case .tray(let control): perform(tray: control)
         case .keepAwake: keepAwake.toggle()
         case .settings:
             close()
@@ -1020,6 +1054,76 @@ final class IslandController {
             close()
             clipboard.requestAccess()
         }
+    }
+
+    // Un clic en un archivo lo muestra en el Finder (la isla se cierra: el Finder sale por encima); la «×» lo quita de la bandeja. Los
+    // que faltan no hacen nada. Arrastrar un archivo hacia otra app no pasa por aquí: lo empieza el hosting
+    private func perform(tray control: TrayControl) {
+        switch control {
+        case .remove(let id): tray.remove(id: id)
+        case .item(let id):
+            guard let url = tray.url(for: id) else { return }
+            close()
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        }
+    }
+
+    // MARK: - Arrastrar archivos
+
+    /// Con el puntero pulsando un archivo de la bandeja y moviéndose, el hosting pide qué arrastrar: ese archivo si todavía existe. Se
+    /// entrega como copia (el hosting solo ofrece `.copy`: la bandeja guarda referencias, y mover el original no es cosa suya)
+    private func dragOutURLs() -> [URL] {
+        // También pulsando la «×»: quien pulsa en la esquina del ícono y se mueve quiere arrastrarlo, no quitarlo
+        guard case .tray(let control) = model.pressedControl else { return [] }
+        let id: String
+        switch control {
+        case .item(let itemID), .remove(let itemID): id = itemID
+        }
+        guard let url = tray.url(for: id) else { return [] }
+        // Con el arrastre empezado, el botón soltado ya no llega a la isla: la pulsación se da por terminada
+        model.pressedControl = nil
+        return [url]
+    }
+
+    /// Un archivo arrastrado de otra app entra en la isla (o se mueve sobre ella): se abre en Utilidades, donde está la bandeja, y esta se
+    /// resalta. Con el arrastre en marcha no llegan avisos de puntero, así que la apertura es de aquí, no del hover. Devuelve si lo acepta
+    private func fileDragOver(requiringPointer: Bool = true) -> Bool {
+        // La ventana mide más que la isla (la sombra, y 1,4 s más tras cerrarse): solo cuenta el arrastre sobre la isla visible. Sin
+        // esto, un arrastre sobre la parte transparente la abriría y `watchPointer` la cerraría 120 ms después, una y otra vez
+        guard !requiringPointer || pointerIsOverIsland() else {
+            fileDragLeft()
+            return false
+        }
+        switch expansion {
+        case .closed, .peek:
+            // Mientras cambia el escritorio no se abre, igual que con el hover
+            guard tuckedAt == nil, !currentSpaces.isEmpty else { return false }
+            openTask?.cancel()
+            open(.drop)
+            // Se cierra al salir el puntero, como con el hover
+            watchPointer()
+        case .open:
+            if currentTab != .utilities {
+                // Pasar a Utilidades por un arrastre no cambia la «última pestaña usada» del atajo y el gesto
+                let previous = lastTab
+                select(.utilities)
+                lastTab = previous
+            }
+        }
+        if !model.trayTargeted { withAnimation(Self.cardAnimation) { model.trayTargeted = true } }
+        return true
+    }
+
+    private func fileDragLeft() {
+        guard model.trayTargeted else { return }
+        withAnimation(Self.cardAnimation) { model.trayTargeted = false }
+    }
+
+    private func fileDropped(_ urls: [URL]) -> Bool {
+        fileDragLeft()
+        // Soltar sobre la parte transparente de la ventana no cuenta: no se ve la isla
+        guard pointerIsOverIsland() else { return false }
+        return tray.add(urls: urls) > 0
     }
 
     /// Un color elegido con el cuentagotas: la isla cerrada dice que ya está copiado
@@ -1205,6 +1309,22 @@ final class IslandContainerView: NSView {
     var canvasSize = CGSize.zero {
         didSet { placeCanvas() }
     }
+    /// Quién atiende los archivos que se sueltan sobre la isla
+    var dropHandlers: FileDropHandlers?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        registerForDraggedTypes([.fileURL])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("no se crea desde un archivo") }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { dropHandlers?.operation(for: sender) ?? [] }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { dropHandlers?.operation(for: sender) ?? [] }
+    override func draggingExited(_ sender: NSDraggingInfo?) { dropHandlers?.left() }
+    override func draggingEnded(_ sender: NSDraggingInfo) { dropHandlers?.left() }
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool { dropHandlers?.perform(sender) ?? false }
 
     // AppKit lo llama dentro del propio setFrame de la ventana, así que el lienzo se recoloca a la vez
     override func resizeSubviews(withOldSize oldSize: NSSize) {
@@ -1232,7 +1352,17 @@ final class IslandHostingView: NSHostingView<IslandView> {
     var onPress: (@MainActor () -> Bool)?
     var onRelease: (@MainActor () -> Void)?
     var onScroll: (@MainActor (SideSwipeTracker.Sample) -> Void)?
+    /// Pide qué archivos arrastrar desde donde se pulsó (los de la bandeja); vacío si no hay nada que arrastrar
+    var onDragOut: (@MainActor () -> [URL])?
+    var onDragEnded: (@MainActor () -> Void)? {
+        didSet { dragSource.onEnded = onDragEnded }
+    }
+    /// La fuente de la sesión de arrastre: la sesión no la retiene, y la vista sí
+    private let dragSource = TrayDragSource()
     private var trackingArea: NSTrackingArea?
+    /// Dónde se pulsó, para saber si el puntero se movió lo bastante como para empezar a arrastrar
+    private var pressOrigin: NSPoint?
+    private static let dragThreshold: CGFloat = 4
 
     // La isla vive en un panel que nunca se activa: el primer clic tiene que llegar igualmente
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -1260,12 +1390,38 @@ final class IslandHostingView: NSHostingView<IslandView> {
     }
 
     override func mouseDown(with event: NSEvent) {
-        if onPress?() == true { return }
+        if onPress?() == true {
+            pressOrigin = event.locationInWindow
+            return
+        }
+        pressOrigin = nil
         showMenu(for: event)
     }
 
+    // Pulsando un archivo de la bandeja y moviendo el puntero unos puntos empieza el arrastre. Sin ese margen, cada clic sería un
+    // arrastre. Una vez empezado, el mouseUp ya no llega aquí: lo recoge la sesión de arrastre
+    override func mouseDragged(with event: NSEvent) {
+        guard let origin = pressOrigin, hypot(event.locationInWindow.x - origin.x, event.locationInWindow.y - origin.y) >= Self.dragThreshold
+        else { return }
+        pressOrigin = nil
+        let urls = onDragOut?() ?? []
+        guard !urls.isEmpty else { return }
+        let location = convert(event.locationInWindow, from: nil)
+        let items = urls.map { url -> NSDraggingItem in
+            let item = NSDraggingItem(pasteboardWriter: url as NSURL)
+            let icon = NSWorkspace.shared.icon(forFile: url.path)
+            icon.size = NSSize(width: 32, height: 32)
+            item.setDraggingFrame(NSRect(x: location.x - 16, y: location.y - 16, width: 32, height: 32), contents: icon)
+            return item
+        }
+        beginDraggingSession(with: items, event: event, source: dragSource)
+    }
+
     // AppKit manda el mouseUp a la vista que recibió el mouseDown, aunque el puntero ya no esté encima
-    override func mouseUp(with event: NSEvent) { onRelease?() }
+    override func mouseUp(with event: NSEvent) {
+        pressOrigin = nil
+        onRelease?()
+    }
 
     override func rightMouseDown(with event: NSEvent) { showMenu(for: event) }
 
@@ -1276,6 +1432,57 @@ final class IslandHostingView: NSHostingView<IslandView> {
     private func showMenu(for event: NSEvent) {
         guard let menuOnClick else { return }
         NSMenu.popUpContextMenu(menuOnClick, with: event, for: self)
+    }
+}
+
+// Lo que se arrastra desde la isla es siempre una copia: la bandeja guarda referencias, y que el destino mueva o borre el original
+// (el Finder en el mismo volumen, la papelera del Dock) no es lo que se pidió al arrastrar
+// NSHostingView ya es NSDraggingSource y no deja sobrescribirlo (lo de SwiftUI), así que la sesión tiene su propia fuente
+@MainActor
+final class TrayDragSource: NSObject, NSDraggingSource {
+    var onEnded: (@MainActor () -> Void)?
+    /// Lo único que se ofrece al destino: copiar. Ni `.move` ni `.delete`, que dejarían al Finder mover el original o a la papelera del
+    /// Dock borrarlo
+    static let operation: NSDragOperation = .copy
+
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        Self.operation
+    }
+
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        onEnded?()
+    }
+}
+
+/// Lo que hace la isla con un archivo que se arrastra sobre ella
+struct FileDropHandlers {
+    /// El arrastre entra o se mueve sobre la isla: devuelve si lo acepta
+    var over: @MainActor () -> Bool
+    var left: @MainActor () -> Void
+    var dropped: @MainActor ([URL]) -> Bool
+
+    /// Los archivos locales del arrastre. Solo se lee el portapapeles del propio arrastre (no el general), que es del usuario
+    @MainActor
+    static func fileURLs(in info: NSDraggingInfo) -> [URL] {
+        info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+    }
+
+    /// Lo que arrastra la propia isla (un archivo de la bandeja) no se acepta de vuelta: no se duplica
+    @MainActor
+    static func isOwn(_ info: NSDraggingInfo) -> Bool { info.draggingSource is TrayDragSource }
+
+    @MainActor
+    func operation(for info: NSDraggingInfo) -> NSDragOperation {
+        guard !Self.isOwn(info),
+              info.draggingPasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) else { return [] }
+        return over() ? .copy : []
+    }
+
+    @MainActor
+    func perform(_ info: NSDraggingInfo) -> Bool {
+        guard !Self.isOwn(info) else { return false }
+        let urls = Self.fileURLs(in: info)
+        return urls.isEmpty ? false : dropped(urls)
     }
 }
 
@@ -1317,6 +1524,25 @@ extension IslandController {
         if expansion == .open { close() }
     }
 
+    /// yabaibar://bandeja-prueba: lo que se puede comprobar de soltar un archivo sin soltar uno de verdad. Dice en el log qué tipos de
+    /// arrastre tienen registrados el contenedor y el hosting de SwiftUI (si el hosting registrara `fileURL`, se llevaría el arrastre
+    /// y el contenedor no lo vería), hace lo que haría un arrastre que entra en la isla (abrirla en Utilidades y resaltar la bandeja) y,
+    /// pasado un momento, lo que hace al salir
+    func debugTrayDrag() {
+        let types = { (view: NSView) in view.registeredDraggedTypes.map(\.rawValue).sorted().joined(separator: ",") }
+        let containerTypes = types(container)
+        let hostingTypes = types(hosting)
+        Logger.app.info("Bandeja (DEBUG): tipos registrados: contenedor [\(containerTypes, privacy: .public)], hosting [\(hostingTypes, privacy: .public)]")
+        let accepted = fileDragOver(requiringPointer: false)
+        let tab = currentTab.title
+        Logger.app.info("Bandeja (DEBUG): arrastre aceptado=\(accepted, privacy: .public), pestaña \(tab, privacy: .public), abierta=\(self.expansion == .open, privacy: .public), resaltada=\(self.model.trayTargeted, privacy: .public)")
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            fileDragLeft()
+            Logger.app.info("Bandeja (DEBUG): el arrastre salió, resaltada=\(self.model.trayTargeted, privacy: .public)")
+        }
+    }
+
     /// Simula cambios de espacio activo muy seguidos, como pasar rápido entre escritorios,
     /// sin tocar los espacios reales. Al terminar vuelve a dibujar el estado real.
     func stressTest(rounds: Int = 40, interval: Duration = .milliseconds(40)) {
@@ -1346,7 +1572,7 @@ extension IslandController {
     func saveSnapshot(
         expanded: Bool = false, hoveringCard: Bool = false, peek: IslandPeek? = nil,
         simulating simulated: (screen: CGSize, notch: CGSize)? = nil, tab: IslandTab? = nil, badges: Bool = false,
-        hoveringRowOf hoveredModule: ModuleID? = nil
+        hoveringRowOf hoveredModule: ModuleID? = nil, trayTargeted: Bool = false
     ) {
         let wasExpanded = model.isExpanded
         let wasHovered = model.hoveredSpace
@@ -1361,6 +1587,7 @@ extension IslandController {
         let wasHoveredRow = model.hoveredRow
         let wasCalendar = model.calendar
         let wasClipboard = model.clipboard
+        let wasTray = (model.tray, model.trayTargeted)
         // Los monitores solo corren con la pestaña a la vista: el snapshot enseña la última medida que haya
         if tab == .developer {
             model.system = tools.system.snapshot
@@ -1369,9 +1596,11 @@ extension IslandController {
             if let hoveredModule { model.hoveredRow = model.moduleContent[hoveredModule]?.rows.first?.id }
         }
         // El calendario se dibuja con lo que haya ahora, sin esperar al seguimiento
-        if tab == .utilities {
+        if (tab ?? model.selectedTab) == .utilities {
             model.calendar = calendar.snapshot
             model.clipboard = clipboard.snapshotForImage
+            model.tray = tray.snapshotForImage
+            model.trayTargeted = trayTargeted
         }
         // Con novedades, las alas son más anchas: el layout de la isla abierta se calcula con ellas, como hace apply()
         if badges {
@@ -1413,6 +1642,7 @@ extension IslandController {
             model.hoveredRow = wasHoveredRow
             model.calendar = wasCalendar
             model.clipboard = wasClipboard
+            (model.tray, model.trayTargeted) = wasTray
             (model.centerWidth, model.height, model.expanded) = wasGeometry
         }
         let size = CGSize(width: model.islandWidth + 2 * Self.shadowMargin, height: model.islandHeight + Self.shadowMargin)

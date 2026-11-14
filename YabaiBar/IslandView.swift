@@ -45,6 +45,11 @@ final class IslandModel {
     var calendar: CalendarSnapshot?
     /// Lo que enseña el módulo Portapapeles
     var clipboard: ClipboardSnapshot?
+    /// Los archivos de la bandeja, y si se está arrastrando un archivo sobre la isla (la bandeja se resalta)
+    var tray: TraySnapshot?
+    var trayTargeted = false
+    /// Los íconos de los archivos de la bandeja
+    @ObservationIgnored let trayIcons = TrayIcons()
     var hoveredRow: String?
 
     /// Las filas de cada módulo, que es lo que necesitan los clics
@@ -289,8 +294,7 @@ struct IslandView: View {
 
     // MARK: - Los módulos
 
-    // Cada módulo es un recuadro con su título; hasta que se hagan, dicen "Próximamente". Los marcos salen de
-    // ModuleGridLayout, que se rehace con los módulos que haya
+    // Cada módulo es un recuadro con su título. Los marcos salen de ModuleGridLayout, que se rehace con los módulos que haya
     private func moduleGrid(_ grid: ModuleGridLayout) -> some View {
         ZStack(alignment: .topLeading) {
             ForEach(grid.cells, id: \.module) { cell in
@@ -302,14 +306,13 @@ struct IslandView: View {
         .frame(width: model.expanded.mediaWidth, height: grid.size.height, alignment: .topLeading)
     }
 
-    // Los módulos que ya existen dibujan lo suyo; los demás, el «Próximamente»
     @ViewBuilder private func moduleContent(_ module: ModuleID) -> some View {
         switch module {
         case .system: systemModule
         case .ports, .docker, .claude, .git, .notices: rowsModule(module)
         case .calendar: calendarModule
         case .clipboard: clipboardModule
-        default: modulePlaceholder(module)
+        case .tray: trayModule
         }
     }
 
@@ -322,21 +325,6 @@ struct IslandView: View {
         }
         .foregroundStyle(.white.opacity(0.6))
         .frame(height: ModuleRowLayout.headerHeight)
-    }
-
-    private func modulePlaceholder(_ module: ModuleID) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            moduleHeader(module)
-            Spacer(minLength: 0)
-            Text("Próximamente")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.55))
-                .frame(maxWidth: .infinity)
-            Spacer(minLength: 0)
-        }
-        .lineLimit(1)
-        .padding(10)
-        .background(Self.moduleShape.fill(.white.opacity(0.06)))
     }
 
     // MARK: - Calendario
@@ -485,6 +473,109 @@ struct IslandView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Capsule().fill(SpaceAccent.color(for: 1).opacity(model.hoveredControl == .calendar(.access) ? 1 : 0.8)))
             .scaleEffect(!model.reduceMotion && model.pressedControl == .calendar(.access) ? 0.94 : 1)
+    }
+
+    // MARK: - Bandeja
+
+    // Los archivos soltados como íconos en una rejilla de 3 filas; el nombre sale en la cabecera al pasar el puntero y la «×» para
+    // quitarlo, en la esquina del ícono. Arrastrando un archivo sobre la isla, el módulo se resalta. Los marcos salen de
+    // TrayModuleLayout, que también resuelve los clics
+    private var trayModule: some View {
+        let size = model.expanded.utilityModules.cells.first { $0.module == .tray }?.frame.size
+            ?? CGSize(width: 180, height: IslandExpandedLayout.moduleHeight)
+        let layout = TrayModuleLayout.self
+        let items = model.tray?.items ?? []
+        let shown = Array(items.prefix(layout.slotCount(in: size)))
+        let hoveredID: String? = {
+            guard case .tray(let control) = model.hoveredControl else { return nil }
+            switch control {
+            case .item(let id), .remove(let id): return id
+            }
+        }()
+        let accent = SpaceAccent.color(for: 1)
+        return ZStack(alignment: .topLeading) {
+            trayTitle(items: items, shown: shown.count, hoveredID: hoveredID)
+                .frame(width: size.width - 2 * layout.padding, height: layout.headerHeight, alignment: .leading)
+                .offset(x: layout.padding, y: layout.padding)
+            if items.isEmpty {
+                trayEmpty(frame: layout.bodyFrame(in: size))
+            } else {
+                ForEach(Array(shown.enumerated()), id: \.element.id) { slot, item in
+                    trayItem(item, frame: layout.itemFrame(slot, in: size), removeFrame: layout.removeFrame(slot, in: size), hovered: item.id == hoveredID)
+                }
+            }
+        }
+        .frame(width: size.width, height: size.height, alignment: .topLeading)
+        .background(Self.moduleShape.fill(model.trayTargeted ? accent.opacity(0.18) : .white.opacity(0.06)))
+        .overlay(Self.moduleShape.stroke(accent, lineWidth: model.trayTargeted ? 1.5 : 0))
+    }
+
+    // «BANDEJA», o el nombre del archivo bajo el puntero (con «falta» si ya no existe), o la invitación a soltar
+    @ViewBuilder private func trayTitle(items: [TraySnapshot.Item], shown: Int, hoveredID: String?) -> some View {
+        if model.trayTargeted {
+            Text("Suelta para añadir")
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(SpaceAccent.color(for: 1))
+        } else if let item = items.first(where: { $0.id == hoveredID }) {
+            Text(item.isMissing ? "\(item.name) · falta" : item.name)
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(.white.opacity(item.isMissing ? 0.5 : 0.85))
+                .truncationMode(.middle)
+        } else {
+            HStack(spacing: 5) {
+                moduleHeader(.tray)
+                if items.count > shown {
+                    Text("+\(items.count - shown)")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.45))
+                }
+            }
+        }
+    }
+
+    private func trayEmpty(frame: CGRect) -> some View {
+        VStack(spacing: 4) {
+            Image(systemName: "tray.and.arrow.down").font(.system(size: 16, weight: .regular))
+            Text("Suelta archivos aquí").font(.system(size: 10, weight: .medium))
+        }
+        .foregroundStyle(.white.opacity(model.trayTargeted ? 0.9 : 0.5))
+        .frame(width: frame.width, height: frame.height)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(.white.opacity(0.18), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+        )
+        .offset(x: frame.minX, y: frame.minY)
+    }
+
+    private func trayItem(_ item: TraySnapshot.Item, frame: CGRect, removeFrame: CGRect, hovered: Bool) -> some View {
+        let removing = model.hoveredControl == .tray(.remove(item.id))
+        return ZStack {
+            RoundedRectangle(cornerRadius: 6, style: .continuous).fill(.white.opacity(hovered ? 0.10 : 0))
+            Image(nsImage: model.trayIcons.icon(path: item.path, isMissing: item.isMissing, isVerified: item.isVerified))
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 18, height: 18)
+                .opacity(item.isMissing ? 0.4 : 1)
+            if item.isMissing {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 7))
+                    .foregroundStyle(.orange)
+                    .offset(x: 9, y: 6)
+            }
+        }
+        .frame(width: frame.width, height: frame.height)
+        // La «×» va en la esquina del propio ícono, antes de moverlo a su sitio
+        .overlay(alignment: .topTrailing) {
+            if hovered {
+                Image(systemName: "xmark")
+                    .font(.system(size: 6.5, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: removeFrame.width - 1, height: removeFrame.height - 1)
+                    .background(Circle().fill(removing ? Color.red.opacity(0.9) : Color.black.opacity(0.65)))
+            }
+        }
+        .scaleEffect(!model.reduceMotion && model.pressedControl == .tray(.item(item.id)) ? 0.92 : 1)
+        .offset(x: frame.minX, y: frame.minY)
     }
 
     // MARK: - Portapapeles

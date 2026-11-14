@@ -168,6 +168,15 @@ El historial está apagado hasta que lo enciendes (el botón «Activar el histor
 </details>
 
 <details>
+<summary>Bandeja: soltar y sacar archivos</summary>
+
+El módulo Bandeja de la pestaña Utilidades guarda archivos para llevarlos a otra app. **Arrastra un archivo sobre la isla** (cerrada o abierta): se abre en Utilidades y resalta la bandeja; suéltalo y queda guardado (hasta 12, el último arriba). **Para sacarlo, arrástralo desde la bandeja** a cualquier app, o haz clic para verlo en el Finder; la «×» al pasar el puntero lo quita de la bandeja (no del disco).
+
+La bandeja guarda una referencia (la ruta y un marcador del sistema), no una copia: no ocupa espacio, y si renombras o mueves el archivo, lo sigue. Si lo borras o lo tiras a la Papelera, se atenúa con un aviso y deja de poder arrastrarse. Lo que sacas de la isla siempre es una **copia**: nunca mueve ni borra el original. Las rutas se guardan en las preferencias de la app (no en el disco aparte), y YabaiBar no abre ni ejecuta nada de lo que hay en ella. Solo archivos locales: lo que no es un archivo (una dirección web, texto) o llega como promesa de archivo (adjuntos de Mail, fotos) no se acepta.
+
+</details>
+
+<details>
 <summary>Calendario: permiso y avisos</summary>
 
 La pestaña Utilidades de la isla enseña tus eventos de Calendario (iCloud, Google y las demás cuentas que tengas en la app Calendario): una tira de 7 días centrada en hoy, y debajo hasta 2 eventos del día con su hora y el color de su calendario. Con un enlace de videollamada (Meet, Zoom o Teams) en el evento sale «Unirse». Un clic en un día enseña sus eventos, las flechas o el gesto de dos dedos de lado sobre la tira pasan de semana, y un clic en un evento abre Calendario.

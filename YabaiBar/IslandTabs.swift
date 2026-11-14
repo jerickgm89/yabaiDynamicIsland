@@ -35,6 +35,8 @@ enum IslandTab: Int, CaseIterable, Hashable, Sendable {
         case pointer
         /// Con el atajo o el gesto: donde se dejó
         case keyboard
+        /// Al arrastrar un archivo sobre la isla: en Utilidades, donde está la bandeja
+        case drop
 
         /// Las teclas h y l (como en vim) solo se registran abierta con el teclado o el gesto: con el puntero la
         /// intención es el ratón, y no se le quitan esas letras a la app de delante
@@ -47,6 +49,7 @@ enum IslandTab: Int, CaseIterable, Hashable, Sendable {
         switch opening {
         case .pointer: .desktops
         case .keyboard: tabs.contains(last) ? last : .desktops
+        case .drop: tabs.contains(.utilities) ? .utilities : .desktops
         }
     }
 

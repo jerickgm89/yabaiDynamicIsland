@@ -23,6 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var notices: NoticeCenter?
     private var calendar: CalendarStore?
     private var clipboard: ClipboardStore?
+    private var tray: TrayStore?
     private var toggleKey: GlobalHotKey?
     private var pomodoroKey: GlobalHotKey?
     private var trackpad: TrackpadMonitor?
@@ -83,6 +84,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             persistence: ClipboardPersistence(url: ClipboardPersistence.defaultURL)
         )
         self.clipboard = clipboard
+        // La bandeja de archivos: lo que se suelta en la isla, por referencia, guardado en UserDefaults
+        let tray = TrayStore(defaults: .standard)
+        self.tray = tray
         let settingsWindow = SettingsWindow(
             settings: settings, launchAtLogin: launchAtLogin, claude: claudeConnection, calendar: calendar, clipboard: clipboard
         ) {
@@ -121,7 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let island = IslandController(
             store: store, icons: AppIcons(), menu: menu, focuser: focuser, settings: settings, media: media,
-            keepAwake: KeepAwake(), pomodoro: pomodoro, calendar: calendar, clipboard: clipboard, tools: tools
+            keepAwake: KeepAwake(), pomodoro: pomodoro, calendar: calendar, clipboard: clipboard, tray: tray, tools: tools
         )
         self.island = island
         island.onMissingShortcut = { [weak desktopShortcuts] in desktopShortcuts?.offer() }
@@ -298,6 +302,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     // portapapeles-demo y portapapeles-herramientas: un historial y unas muestras inventados, sin leer el portapapeles
                     let clipboardDemo = flags.contains("portapapeles-demo") || flags.contains("portapapeles-herramientas")
                     if clipboardDemo { self.clipboard?.injectDemo(mode: flags.contains("portapapeles-herramientas") ? .tools : .history) }
+                    // bandeja-demo: archivos inventados en la bandeja; con bandeja-arrastre, además el módulo resaltado como al
+                    // arrastrar un archivo sobre la isla
+                    let trayDemo = flags.contains("bandeja-demo") || flags.contains("bandeja-arrastre")
+                    if trayDemo { self.tray?.injectDemo(count: flags.contains("bandeja-vacia") ? 0 : 7) }
                     // calendario-demo: eventos inventados (con permiso, aunque no lo haya) en el módulo Calendario
                     let calendarDemo = flags.contains("calendario-demo")
                     if calendarDemo { self.calendar?.injectDemo() }
@@ -308,12 +316,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         if noticesDemo { self.tools?.notices.resetInjected() }
                         if calendarDemo { self.calendar?.resetInjected() }
                         if clipboardDemo { self.clipboard?.resetInjected() }
+                        if trayDemo { self.tray?.resetInjected() }
                         if flags.contains("claude-demo") { self.tools?.claude.resetInjected() }
                         if flags.contains("git-demo") { self.tools?.git.resetInjected() }
                     }
                     self.island?.saveSnapshot(
                         expanded: flags.contains("abierta"), hoveringCard: flags.contains("hover"), peek: peek,
-                        simulating: simulated, tab: tab, badges: badges, hoveringRowOf: hoveredModule
+                        simulating: simulated, tab: tab, badges: badges, hoveringRowOf: hoveredModule,
+                        trayTargeted: flags.contains("bandeja-arrastre")
                     )
                 }
             case "abrir":
@@ -321,6 +331,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 island?.debugOpen(tab: items.first { $0.name == "pestaña" || $0.name == "tab" }?.value.flatMap(Self.tab) ?? .desktops)
             case "cerrar":
                 island?.debugClose()
+            case "bandeja-prueba":
+                island?.debugTrayDrag()
             case "stress":
                 island?.stressTest()
             case "pomodoro-demo":

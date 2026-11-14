@@ -187,6 +187,8 @@ struct IslandExpandedLayout: Equatable {
         case calendar(CalendarControl)
         /// Algo del módulo Portapapeles: una copia, una herramienta, el cuentagotas…
         case clipboard(ClipboardControl)
+        /// Un archivo de la bandeja o su «×»
+        case tray(TrayControl)
         case artwork, previous, playPause, next, keepAwake, settings
         case pomodoroPlayPause, pomodoroSkip, pomodoroStop
     }
