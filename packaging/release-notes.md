@@ -22,7 +22,7 @@ Si prefieres la terminal: `xattr -dr com.apple.quarantine /Applications/YabaiBar
 
 ## Requisitos
 
-- [yabai](https://github.com/asmvik/yabai) instalado y en marcha, configurado leyendo antes [su wiki](https://github.com/asmvik/yabai/wiki): `brew install asmvik/formulae/yabai` y `yabai --start-service`. YabaiBar no necesita la scripting addition ni desactivar SIP.
+- [yabai](https://github.com/asmvik/yabai) instalado y en marcha, configurado leyendo antes [su wiki](https://github.com/asmvik/yabai/wiki): `brew install asmvik/formulae/yabai` y `yabai --start-service`. YabaiBar no necesita la scripting addition ni desactivar SIP; solo unas pocas acciones opcionales del panel de yabai (fijar una ventana, crear, quitar y mover escritorios, cambiar de escritorio al instante) la usan, y sin ella se ven atenuadas.
 - macOS 14 o posterior (probado en macOS 27).
 
 ## Compatibilidad

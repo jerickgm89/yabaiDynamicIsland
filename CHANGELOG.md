@@ -2,6 +2,31 @@
 
 Las versiones de YabaiBar. La 3.0.0 es la primera que se instala sin compilar: con Homebrew o con el DMG de [Releases](https://github.com/jerickgm89/yabaiDynamicIsland/releases). `scripts/release.sh` copia la sección de cada versión en las notas de su release.
 
+## [3.4.0] - 2026-11-14
+
+La isla abierta ahora tiene **tres pestañas** (Escritorios, Utilidades y Desarrollador) y bastante más que hacer. Se cambia de pestaña con un clic, con ⌥← y ⌥→ y, si abriste la isla con el atajo o el gesto, con h y l, como en vim. El escritorio activo se ve siempre junto al notch, y un punto en la píldora de una pestaña (o su ícono en la isla cerrada) avisa de una novedad.
+
+- **Escritorios, con yabai:** debajo de las tarjetas hay un panel con las ventanas del escritorio activo y los botones de yabai.
+  - Un clic en una ventana la enfoca; arrastrarla a la tarjeta de otro escritorio la mueve.
+  - Distribución (BSP, pila o flotante), equilibrar, rotar, espejos y «Recordar en el N»: la app vuelve a poner esa distribución cuando yabai se reinicia.
+  - Ventana enfocada: flotante, zoom, dividir, principal, «siempre flotante» (una regla de yabai que YabaiBar recuerda), en todos los escritorios y encima.
+  - Escritorio: modo presentación (sin márgenes ni huecos), crear, quitar (con confirmación) y mover.
+  - Cada tarjeta lleva el ícono de su distribución. Ajustes › Escritorios añade el estado de yabai, «Reiniciar yabai…» (con confirmación), lo recordado y la chuleta de tu skhdrc, en solo lectura.
+  - Fijar, encima, crear, quitar y mover escritorios y cambiar de escritorio al instante necesitan la **scripting addition** de yabai (`sudo yabai --load-sa`, que haces tú). Sin ella, esos botones se ven atenuados y dicen cómo cargarla.
+- **Utilidades:**
+  - **Calendario:** una tira de 7 días, hasta 2 eventos del día, «Unirse» a videollamadas de Meet, Zoom o Teams, y un aviso 5 minutos antes. Solo lee, y macOS pide el permiso cuando pulsas «Dar acceso».
+  - **Portapapeles:** diez herramientas (JSON, base64, URL, JWT, UUID, timestamp, SHA-256) que transforman lo copiado, un cuentagotas de color y un historial de las últimas copias. El historial viene apagado: macOS 27 pregunta antes de dejar leer el portapapeles. No guarda lo que las apps marcan como oculto ni lo de los gestores de contraseñas.
+  - **Bandeja:** arrastra archivos sobre la isla para guardarlos (por referencia, hasta 12) y arrástralos fuera a otra app: siempre sale una copia, nunca mueve ni borra el original.
+- **Desarrollador:**
+  - **Sistema:** CPU, memoria y los procesos que más CPU usan.
+  - **Puertos:** los servidores locales que escuchan, para abrirlos, copiar su URL o cerrarlos (con confirmación).
+  - **Docker:** los contenedores, para pararlos, reiniciarlos e iniciarlos.
+  - **Claude Code:** las sesiones abiertas y un aviso en la isla cerrada cuando una te pregunta. «Conectar con Claude Code» en Ajustes añade sus hooks a tu `settings.json`, con copia y solo si lo confirmas.
+  - **Git y GitHub:** el estado de tus repositorios, y avisos de commits sin subir, cambios sin commit, etiquetas sin release y del CI de tu último push. Solo informa: nunca hace commit, push ni fetch.
+  - **Avisos de la terminal:** `yb shell-init zsh` y `yb aviso`, un ayudante que va dentro de la app (Homebrew lo enlaza como comando `yb`). Un comando largo que termina sale en la isla, con la línea de tu `~/.zshrc` que te da Ajustes.
+- **Permisos y privacidad:** el calendario y el portapapeles piden permiso solo cuando los pides. Lo que viaja entre procesos (el nombre de un programa, no tu línea de comandos) está acotado, y ni las rutas, ni los nombres de archivos, ni los títulos de ventanas, ni lo que dicen yabai o `gh` van a ningún log.
+- **Ajustes:** pestañas nuevas Utilidades y Desarrollador, y más cosas en Escritorios. Con la isla cerrada no se consulta nada cada pocos segundos: Sistema, Puertos, Docker y el panel de yabai solo miran con su pestaña a la vista, y lo demás llega por eventos.
+
 ## [3.3.0] - 2026-11-08
 
 - **Ícono nuevo:** la isla, con el logo de YabaiBar y tres escritorios.

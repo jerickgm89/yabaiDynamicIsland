@@ -32,7 +32,7 @@ Una isla alrededor del notch del Mac que muestra tus escritorios de [yabai](http
   yabai --start-service
   ```
 
-  No hace falta la scripting addition ni desactivar SIP.
+  No hace falta la scripting addition ni desactivar SIP: solo unas pocas acciones opcionales del panel de yabai (fijar una ventana, crear, quitar y mover escritorios, cambiar de escritorio al instante) la usan, y sin ella se ven atenuadas.
 
 ## Instalación
 
