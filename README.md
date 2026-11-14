@@ -1,26 +1,53 @@
 # YabaiBar
 
-> **English summary.** YabaiBar turns the MacBook notch into a Dynamic Island for your [yabai](https://github.com/asmvik/yabai) spaces: see your desktops and their apps, jump to one with a click, control what's playing and run a Pomodoro. It works on any MacBook with a notch (MacBook Pro from 2021, MacBook Air from 2022) and needs yabai installed. Install it with `brew install --cask jerickgm89/tap/yabaibar`. It isn't notarized: the first time, go to System Settings › Privacy & Security › Open Anyway. The rest of this README is in Spanish.
+> **English summary.** YabaiBar turns the MacBook notch into a Dynamic Island for your [yabai](https://github.com/asmvik/yabai) spaces: see your desktops and their apps, jump to one with a click, and control yabai from the island. Open it and you get three tabs: Desktops, Utilities (music, Pomodoro, calendar, clipboard tools, a file tray) and Developer (system monitor, ports, Docker, Claude Code, Git and GitHub, terminal notices). It works on any MacBook with a notch (MacBook Pro from 2021, MacBook Air from 2022) and needs yabai installed. Install it with `brew install --cask jerickgm89/tap/yabaibar`. It isn't notarized: the first time, go to System Settings › Privacy & Security › Open Anyway. The rest of this README is in Spanish.
 
-Una isla alrededor del notch del Mac que muestra tus escritorios de [yabai](https://github.com/asmvik/yabai) con los íconos de sus apps. Ábrela para saltar a cualquier escritorio, controlar la música o empezar un Pomodoro. Su diseño se inspira en [Atoll](https://github.com/Ebullioscopic/Atoll) (ver [Agradecimientos](#agradecimientos)).
+Una isla alrededor del notch del Mac que muestra tus escritorios de [yabai](https://github.com/asmvik/yabai) con los íconos de sus apps. Ábrela para saltar a cualquier escritorio, controlar yabai, la música o un Pomodoro, y para tener a mano tu calendario, el portapapeles, una bandeja de archivos y el estado de tus herramientas de desarrollo. Su diseño se inspira en [Atoll](https://github.com/Ebullioscopic/Atoll) (ver [Agradecimientos](#agradecimientos)).
 
 <p align="center">
-  <img src="assets/isla-cerrada.png" width="640" alt="La isla cerrada: el espacio 3 activo con su app a la izquierda del notch y los espacios 1, 2 y 4 a la derecha">
+  <img src="assets/isla-cerrada.png" width="640" alt="La isla cerrada: el espacio 1 activo con su app a la izquierda del notch y los espacios 2, 3 y 4 a la derecha">
 </p>
 
 <p align="center">
-  <img src="assets/isla-abierta.png" width="820" alt="La isla abierta: una tarjeta por espacio con su número, sus apps y su atajo, con el puntero sobre la tarjeta 1">
+  <img src="assets/isla-escritorios.png" width="820" alt="La pestaña Escritorios: una tarjeta por escritorio con sus apps y su atajo, y debajo el panel de yabai con las ventanas del escritorio activo, la distribución y los botones de la ventana enfocada">
+  <br><sub><b>Escritorios:</b> tus tarjetas y el panel de yabai</sub>
+</p>
+
+<p align="center">
+  <img src="assets/isla-utilidades.png" width="820" alt="La pestaña Utilidades: el Pomodoro, el calendario con la tira de 7 días, el portapapeles con su historial y la bandeja de archivos">
+  <br><sub><b>Utilidades:</b> música y Pomodoro, calendario, portapapeles y bandeja</sub>
+</p>
+
+<p align="center">
+  <img src="assets/isla-desarrollador.png" width="820" alt="La pestaña Desarrollador: el monitor del sistema, los puertos, Docker, Git, Claude Code y los avisos">
+  <br><sub><b>Desarrollador:</b> sistema, puertos, Docker, Git, Claude Code y avisos</sub>
 </p>
 
 ## Qué hace
 
-- **Tus escritorios, siempre a la vista:** el activo a la izquierda del notch, con sus apps, y los demás a la derecha.
-- **Un clic para cambiar de escritorio:** abre la isla y pulsa la tarjeta del escritorio al que quieres ir. macOS usa su propia animación.
+Con la isla cerrada, siempre a la vista: el escritorio activo a la izquierda del notch, con sus apps, y los demás a la derecha. Al abrirla tiene **tres pestañas**:
+
+- **Escritorios:** una tarjeta por escritorio. Un clic en una tarjeta cambia de escritorio (macOS usa su propia animación). Debajo, un **panel de yabai** con las ventanas del escritorio activo y los botones para ordenarlas: distribución (mosaico, pila o flotante), equilibrar, girar, voltear, modo presentación, hacer principal una ventana, «esta app, siempre flotante»… Arrastra una ventana a otra tarjeta para moverla.
+- **Utilidades:**
+  - **Música:** lo que suena, con sus botones, en TIDAL o en cualquier app del «Ahora suena» de macOS.
+  - **Pomodoro:** foco y descansos, con un anillo de progreso y sonidos suaves al terminar cada fase.
+  - **Calendario:** tus próximos eventos, con «Unirse» a las videollamadas.
+  - **Portapapeles:** herramientas (JSON, base64, JWT, SHA-256…), un cuentagotas de color y, si lo activas, el historial.
+  - **Bandeja:** suelta archivos sobre la isla y llévalos a otra app.
+- **Desarrollador:**
+  - **Sistema:** CPU, memoria y los procesos que más gastan.
+  - **Puertos y Docker:** los servidores locales y los contenedores, para abrirlos, copiar su URL, cerrarlos o pararlos.
+  - **Claude Code:** tus sesiones abiertas, y un aviso cuando una te hace una pregunta.
+  - **Git y GitHub:** el estado de tus repositorios y el CI de tu último push.
+  - **Avisos:** los de la terminal (un comando largo que termina), Claude Code y Git, y los 10 últimos guardados.
+
+Y, en general:
+
 - **Atajos automáticos:** cuando creas un escritorio, YabaiBar te ofrece añadirle su atajo para que el clic funcione.
-- **Música:** lo que suena, con sus botones, en TIDAL o en cualquier app del «Ahora suena» de macOS.
-- **Pomodoro:** foco y descansos, con un anillo de progreso y sonidos suaves al terminar cada fase.
-- **Avisos:** el cargador y la batería baja, y un botón para que el Mac no se duerma.
+- **Avisos en la isla cerrada:** el cargador y la batería baja, una canción nueva, el Pomodoro, el calendario y lo que pase en la pestaña Desarrollador. Un punto en la píldora de una pestaña avisa de una novedad.
+- **Mantener el Mac despierto,** con un botón (una taza).
 - **Se aparta cuando estorba:** se oculta en Mission Control y se recoge en las apps a pantalla completa.
+- **Ligera con la isla cerrada:** el monitor del sistema, los puertos, Docker y el panel de yabai solo se miran con su pestaña a la vista. Lo demás se entera por eventos.
 
 ## Requisitos
 
@@ -32,7 +59,7 @@ Una isla alrededor del notch del Mac que muestra tus escritorios de [yabai](http
   yabai --start-service
   ```
 
-  No hace falta la scripting addition ni desactivar SIP: solo unas pocas acciones opcionales del panel de yabai (fijar una ventana, crear, quitar y mover escritorios, cambiar de escritorio al instante) la usan, y sin ella se ven atenuadas.
+  No hace falta la scripting addition ni desactivar SIP: solo unas pocas acciones opcionales del panel de yabai (fijar una ventana, crear, quitar y mover escritorios, cambiar de escritorio al instante) la usan, y sin ella se ven atenuadas. Ojo: la scripting addition de yabai no soporta todas las versiones de macOS (ver «Escritorios: el panel de yabai» más abajo).
 
 ## Instalación
 
@@ -56,11 +83,15 @@ Para actualizarla: `brew upgrade --cask yabaibar`.
 | Para | Haz esto |
 | --- | --- |
 | Abrir la isla | Pasa el puntero por el notch, desliza 3 o 4 dedos hacia abajo en el trackpad o pulsa ⌥I |
+| Cambiar de pestaña | Las tres píldoras de la esquina izquierda, o ⌥← y ⌥→. Si abriste la isla con ⌥I o el gesto, también h (anterior) y l (siguiente), como en vim |
 | Ir a un escritorio | Clic en su tarjeta |
-| Cambiar de canción | Los botones de la franja de música, o dos dedos de lado sobre ella |
-| Empezar o pausar un Pomodoro | El reloj de la esquina izquierda, o ⌥P desde cualquier app |
-| Mantener el Mac despierto | La taza, junto al reloj del Pomodoro |
+| Mover una ventana a otro escritorio | En la pestaña Escritorios, arrastra su botón del panel a la tarjeta del escritorio |
+| Cambiar de canción | Los botones de la franja de música (en Utilidades), o dos dedos de lado sobre ella |
+| Empezar o pausar un Pomodoro | Su botón en Utilidades, o ⌥P desde cualquier app |
+| Guardar un archivo en la bandeja | Arrástralo sobre la isla, cerrada o abierta. Para sacarlo, arrástralo desde la bandeja a otra app |
+| Mantener el Mac despierto | La taza, a la derecha de la isla abierta, junto al engranaje |
 | Abrir los ajustes | El engranaje de la esquina derecha |
+| Cerrar la isla | Esc (si la abriste con ⌥I o el gesto), o un clic en otra app |
 | Ver el menú | Clic derecho en la isla, o un clic fuera de las tarjetas |
 
 **Para que el clic cambie de escritorio** hacen falta dos cosas, y «Primeros pasos» las revisa:
@@ -69,6 +100,13 @@ Para actualizarla: `brew upgrade --cask yabaibar`.
 - **El permiso de Accesibilidad.** macOS lo pide la primera vez que pulsas una tarjeta.
 
 **Para el gesto de 3 o 4 dedos,** App Exposé tiene que estar desactivado en Ajustes › Trackpad › Más gestos, porque usa el mismo movimiento.
+
+**Permisos:** YabaiBar solo pide lo que necesita, y casi todo cuando tú lo activas.
+
+- **Accesibilidad,** para pulsar el atajo del escritorio al que vas.
+- **Calendarios,** solo si pulsas «Dar acceso» en el módulo del calendario. Solo lee.
+- **Pegar desde otras apps,** solo si activas el historial del portapapeles.
+- **Claude Code,** solo si pulsas «Conectar con Claude Code…» en Ajustes. Pide confirmación y guarda una copia de tu `settings.json`.
 
 ## Ajustes
 
@@ -82,7 +120,9 @@ El engranaje de la isla abierta abre los ajustes. Los cambios se aplican al mome
 - **Isla:** una isla en miniatura que cambia al encender o apagar la música, el Pomodoro y la taza, y lo que se ve en la isla cerrada (barras, anillo y avisos).
 - **Música:** de qué app.
 - **Pomodoro:** los tiempos (Clásico 25/5/15, Largo, Corto o los tuyos), si las fases empiezan solas, el objetivo del día, los sonidos y si se baja la música en el aviso.
-- **Escritorios:** las señales de yabai y los atajos de los escritorios nuevos.
+- **Escritorios:** el panel de yabai (y si se cambia de escritorio al instante), el estado de yabai y «Reiniciar yabai…», lo que la app recuerda de cada escritorio, las señales de yabai, los atajos de los escritorios nuevos y la chuleta de tus atajos de skhd.
+- **Utilidades:** el calendario (el permiso, los avisos y qué calendarios se ven) y el portapapeles (el historial y las apps que se ignoran).
+- **Desarrollador:** qué módulos se ven (Docker, Git y GitHub con `gh`), las carpetas de Git que se vigilan y sus avisos, conectar Claude Code y los avisos de la terminal.
 - **Atajos:** el de la isla (⌥I), el del Pomodoro (⌥P) y el gesto del trackpad.
 - **Acerca de:** la versión, tu Mac y su notch, y «Copiar datos» para los issues.
 
@@ -99,7 +139,8 @@ La isla mide el notch de tu pantalla, así que se ajusta a cada modelo y a cualq
 
 **Si algo no va bien:**
 
-- **La isla dice «YB ⚠︎»:** yabai no responde. Arráncalo con `yabai --start-service`.
+- **La isla dice «YB ⚠︎»:** yabai no responde. Arráncalo con `yabai --start-service`. Si está en marcha pero `yabai -m query --spaces` devuelve algo cortado (solo `[`), reinícialo con `yabai --restart-service` (o «Reiniciar yabai…» en el menú de la isla).
+- **Crear, quitar o mover un escritorio no hace nada:** la scripting addition de yabai no soporta tu versión de macOS. YabaiBar lo avisa con «Sin soporte en macOS …» y atenúa esos botones. Mission Control sigue sirviendo para eso.
 - **El clic no cambia de escritorio:** abre «Primeros pasos». Si el permiso de Accesibilidad ya está marcado, quita YabaiBar de la lista con «−» y vuelve a pulsar una tarjeta.
 - **Algo se ve descolocado en tu Mac:** abre un [issue](https://github.com/jerickgm89/yabaiDynamicIsland/issues) y pega lo que copia «Primeros pasos» › «Copiar datos».
 
@@ -172,7 +213,7 @@ El historial está apagado hasta que lo enciendes (el botón «Activar el histor
 
 Debajo de las tarjetas de la pestaña Escritorios hay un panel con las ventanas del escritorio activo y los botones de yabai. **Ventanas:** un clic enfoca una; arrastrarla a la tarjeta de otro escritorio la mueve. **Distribución:** mosaico, pila o flotante, equilibrar, girar, voltear y modo presentación (sin márgenes ni huecos). **Ventana enfocada:** flotante o mosaico, zoom, cambiar la división, hacerla principal, «esta app, siempre flotante», en todos los escritorios y siempre encima. **Escritorio:** nuevo, quitar (con confirmación) y mover. Cada tarjeta lleva un ícono con su distribución.
 
-Fijar, siempre encima, crear, quitar y mover escritorios y cambiar al instante necesitan la **scripting addition** de yabai (`sudo yabai --load-sa`, que haces tú; YabaiBar nunca la carga): sin ella, esos botones se ven atenuados y dicen cómo cargarla. YabaiBar recuerda la distribución que eliges para cada escritorio y las apps siempre flotantes, y las vuelve a poner cuando yabai se reinicia. En Ajustes › Escritorios: el estado de yabai, «Reiniciar yabai…» (con confirmación), lo recordado y la chuleta de tus atajos de skhd (solo lectura). Con la pestaña cerrada, el panel no consulta nada a yabai.
+Fijar, siempre encima, crear, quitar y mover escritorios y cambiar al instante necesitan la **scripting addition** de yabai (`sudo yabai --load-sa`, que haces tú; YabaiBar nunca la carga): sin ella, esos botones se ven atenuados y dicen cómo cargarla. Ojo: la scripting addition de yabai solo funciona con las versiones de macOS que soporta; si no es la tuya, crear, quitar y mover escritorios no hacen nada aunque esté cargada, y YabaiBar lo detecta tras pulsar el botón («Sin soporte en macOS …») y deja de intentarlo. YabaiBar recuerda la distribución que eliges para cada escritorio y las apps siempre flotantes, y las vuelve a poner cuando yabai se reinicia. En Ajustes › Escritorios: el estado de yabai, «Reiniciar yabai…» (con confirmación), lo recordado y la chuleta de tus atajos de skhd (solo lectura). Con la pestaña cerrada, el panel no consulta nada a yabai.
 
 </details>
 
