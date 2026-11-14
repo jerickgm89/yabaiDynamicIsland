@@ -46,6 +46,8 @@ final class IslandController {
     /// Al elegir un escritorio la isla se recoge entera en el notch; el atajo se pulsa cuando ya casi lo ha hecho,
     /// para que el encogimiento se vea antes de que macOS empiece a deslizar
     static let switchDelay: Duration = .milliseconds(200)
+    /// Cuánto se espera, tras el cambio de escritorio al instante, para ver si hizo efecto antes de volver al atajo
+    static let instantSwitchCheck: Duration = .milliseconds(700)
     /// Margen de la ventana alrededor de la isla para que quepa la sombra
     static let shadowMargin: CGFloat = 16
     /// TIDAL manda dos avisos seguidos por cada canción nueva: el aviso espera a que se calme
@@ -73,6 +75,7 @@ final class IslandController {
     private let calendar: CalendarStore
     private let clipboard: ClipboardStore
     private let tray: TrayStore
+    private let desktopControl: DesktopControlStore
     private var geometry: NotchGeometry?
     private var screenWidth: CGFloat = 0
     // Copias de lo dibujado. No se leen del modelo dentro de render(): withObservationTracking
@@ -125,12 +128,13 @@ final class IslandController {
     init(
         store: SpacesStore, icons: AppIcons, menu: AppMenu, focuser: ShortcutFocuser, settings: AppSettings,
         media: NowPlayingStore, keepAwake: KeepAwake, pomodoro: PomodoroStore, calendar: CalendarStore,
-        clipboard: ClipboardStore, tray: TrayStore, tools: DevTools
+        clipboard: ClipboardStore, tray: TrayStore, desktopControl: DesktopControlStore, tools: DevTools
     ) {
         self.store = store
         self.calendar = calendar
         self.clipboard = clipboard
         self.tray = tray
+        self.desktopControl = desktopControl
         self.icons = icons
         self.focuser = focuser
         self.settings = settings
@@ -157,6 +161,8 @@ final class IslandController {
             dropped: { [weak self] urls in self?.fileDropped(urls) ?? false }
         )
         container.dropHandlers = dropHandlers
+        // Quitar un escritorio pregunta antes: la isla se cierra para que el aviso (modal) no se quede detrás
+        desktopControl.onWillAsk = { [weak self] in self?.close() }
         // El hosting va dentro de un contenedor y no como contentView: si lo es, intenta ajustar (y animar)
         // el tamaño de la ventana a la isla, choca con nuestros setFrame y, con cambios de espacio muy
         // seguidos, AppKit lanza una excepción por demasiadas pasadas de restricciones y cierra la app
@@ -176,6 +182,7 @@ final class IslandController {
         calendar.onNotice = { [weak self] event, moment in self?.calendarNotice(event, at: moment) }
         observeClipboard()
         observeTray()
+        observeDesktopControl()
         clipboard.onColorCopied = { [weak self] hex in self?.colorCopied(hex) }
         tools.claude.onOutcome = { [weak self] outcome in self?.claudeOutcome(outcome) }
         tools.git.onNotice = { [weak self] notice in self?.gitNotice(notice) }
@@ -377,7 +384,8 @@ final class IslandController {
             hasKeepAwake: settings.keepAwakeButton,
             hasPomodoro: settings.showPomodoro,
             pomodoroIdle: currentPomodoroIdle,
-            hasSettingsButton: true
+            hasSettingsButton: true,
+            hasDesktopPanel: settings.showDesktopPanel
         )
     }
 
@@ -473,6 +481,16 @@ final class IslandController {
         }
     }
 
+    // Lo que enseña el panel de yabai de Escritorios: las ventanas del escritorio activo y el resultado de lo último
+    private func observeDesktopControl() {
+        withObservationTracking {
+            let snapshot = desktopControl.snapshot
+            if snapshot != model.desktopControl { model.desktopControl = snapshot }
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.observeDesktopControl() }
+        }
+    }
+
     // Lo que enseña el módulo Bandeja: sus archivos y cuáles faltan
     private func observeTray() {
         withObservationTracking {
@@ -563,6 +581,8 @@ final class IslandController {
         let visible = expansion == .open ? currentTab : nil
         tools.setVisibleTab(visible)
         calendar.setVisible(visible == .utilities)
+        // El panel de yabai solo lee con la pestaña Escritorios a la vista
+        desktopControl.setVisible(visible == .desktops && settings.showDesktopPanel)
         // La bandeja mira el disco al ver la pestaña (no hay temporizador): lo movido o borrado se nota al abrirla
         if visible == .utilities { tray.refresh() }
         // El punto de Git avisa hasta que abres la pestaña
@@ -761,8 +781,9 @@ final class IslandController {
             model.hoveredControl = nil
             model.pressedControl = nil
             model.hoveredRow = nil
-            // Un arrastre que no avisó de su salida no deja la bandeja resaltada para la próxima vez
+            // Un arrastre que no avisó de su salida no deja la bandeja resaltada para la próxima vez, ni una ventana a medio soltar la tarjeta
             model.trayTargeted = false
+            model.dropSpace = nil
         }
         settleWindow()
         if wasOpen { Logger.app.info("Isla cerrada") }
@@ -940,6 +961,9 @@ final class IslandController {
         if let control = model.expanded.trayControl(
             at: point, islandWidth: islandWidth, topHeight: topHeight, ids: model.tray?.items.map(\.id) ?? []
         ) { return .tray(control) }
+        if let control = model.expanded.desktopControl(
+            at: point, islandWidth: islandWidth, topHeight: topHeight, windowIDs: model.desktopControl.windows.map(\.id)
+        ) { return .desktop(control) }
         return model.expanded.moduleControl(
             at: point, islandWidth: islandWidth, topHeight: topHeight, rows: model.moduleRows
         ).map { .module($0) }
@@ -958,12 +982,17 @@ final class IslandController {
         let hovered = spaceUnderPointer().flatMap { model.canPress($0) ? $0.index : nil }
         let control = controlUnderPointer()
         let row = moduleRowUnderPointer()
-        guard hovered != model.hoveredSpace || control != model.hoveredControl || row != model.hoveredRow else { return }
+        // Arrastrando una ventana del panel, la tarjeta de otro escritorio bajo el puntero es donde se soltaría
+        var dropping: Int?
+        if case .desktop(.window) = model.pressedControl, let space = spaceUnderPointer(), !space.isFocused, !space.isFullscreen { dropping = space.index }
+        guard hovered != model.hoveredSpace || control != model.hoveredControl || row != model.hoveredRow || dropping != model.dropSpace
+        else { return }
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         withAnimation(reduceMotion ? Self.reducedAnimation : Self.cardAnimation) {
             model.hoveredSpace = hovered
             model.hoveredControl = control
             model.hoveredRow = row
+            model.dropSpace = dropping
         }
     }
 
@@ -992,8 +1021,20 @@ final class IslandController {
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         if let pressed = model.pressedControl {
             let control = controlUnderPointer()
-            withAnimation(reduceMotion ? Self.reducedAnimation : Self.cardAnimation) { model.pressedControl = nil }
-            if control == pressed { perform(pressed) }
+            // Una ventana del panel soltada sobre la tarjeta de otro escritorio se mueve a él (`window --space`)
+            let moveTarget: (window: Int, space: Int)? = {
+                guard case .desktop(let pressedControl) = pressed else { return nil }
+                return DesktopDrop.target(pressed: pressedControl, under: controlUnderPointer().flatMap { if case .desktop(let c) = $0 { c } else { nil } }, space: spaceUnderPointer())
+            }()
+            withAnimation(reduceMotion ? Self.reducedAnimation : Self.cardAnimation) {
+                model.pressedControl = nil
+                model.dropSpace = nil
+            }
+            if let moveTarget {
+                desktopControl.perform(.moveWindow(id: moveTarget.window, toSpace: moveTarget.space))
+            } else if control == pressed {
+                perform(pressed)
+            }
             return
         }
         guard let pressed = model.pressedSpace else { return }
@@ -1010,6 +1051,9 @@ final class IslandController {
         } else if case .tray(let control) = control {
             // Sin el identificador, que apunta a un archivo
             Logger.app.info("Clic: bandeja \(control.isRemove ? "quitar" : "archivo", privacy: .public)")
+        } else if case .desktop = control {
+            // Sin lo que hay dentro: una ventana lleva su identificador y los botones, lo de yabai
+            Logger.app.info("Clic: panel de yabai")
         } else {
             Logger.app.info("Clic: \(String(describing: control), privacy: .public)")
         }
@@ -1019,6 +1063,11 @@ final class IslandController {
         case .calendar(let control): perform(calendar: control)
         case .clipboard(let control): perform(clipboard: control)
         case .tray(let control): perform(tray: control)
+        case .desktop(.skhd):
+            // La chuleta de skhd está en Ajustes › Escritorios
+            close()
+            onOpenSettings?(.desktops)
+        case .desktop(let control): desktopControl.press(control)
         case .keepAwake: keepAwake.toggle()
         case .settings:
             close()
@@ -1176,6 +1225,23 @@ final class IslandController {
     private func switchTo(_ space: SpaceSummary) {
         // Ya estás ahí: solo se cierra la isla
         guard !space.isFocused else { return close() }
+        // Con el ajuste y la scripting addition cargada, `space --focus` cambia al instante, sin el atajo ni la animación de macOS
+        if settings.instantSwitch, desktopControl.scriptingAdditionLoaded {
+            Logger.app.info("Clic: ir al escritorio \(space.index) al instante")
+            collapseIntoNotch()
+            Task {
+                try? await Task.sleep(for: Self.switchDelay)
+                await desktopControl.perform(.focusSpace(space.index))?.value
+                // Sin la scripting addition (un socket que se quedó huérfano al reiniciar el Dock) `space --focus` sale bien sin cambiar nada:
+                // si pasado un momento el escritorio no es el pedido, se vuelve al atajo ⌥N
+                try? await Task.sleep(for: Self.instantSwitchCheck)
+                guard currentSpaces.first(where: \.isFocused)?.index != space.index, focuser.readiness(for: space.index) == .ready else { return }
+                Logger.app.info("El cambio al instante no hizo efecto: se usa el atajo")
+                _ = focuser.focus(space: space.index)
+            }
+            scheduleUntuck(after: Self.switchDelay + Self.tuckTimeout)
+            return
+        }
         switch focuser.readiness(for: space.index) {
         case .noShortcut:
             Logger.app.info("El escritorio \(space.index) no tiene atajo en Ajustes › Teclado › Atajos")
@@ -1219,6 +1285,8 @@ final class IslandController {
             model.hovering = false
             model.hoveredSpace = nil
             model.hoveredControl = nil
+            model.pressedControl = nil
+            model.dropSpace = nil
             model.wingsTucked = true
         }
         settleWindow()
@@ -1401,6 +1469,8 @@ final class IslandHostingView: NSHostingView<IslandView> {
     // Pulsando un archivo de la bandeja y moviendo el puntero unos puntos empieza el arrastre. Sin ese margen, cada clic sería un
     // arrastre. Una vez empezado, el mouseUp ya no llega aquí: lo recoge la sesión de arrastre
     override func mouseDragged(with event: NSEvent) {
+        // Con el botón pulsado no llegan avisos de movimiento: arrastrando una ventana del panel, la tarjeta de destino se sigue desde aquí
+        onPointerMoved?()
         guard let origin = pressOrigin, hypot(event.locationInWindow.x - origin.x, event.locationInWindow.y - origin.y) >= Self.dragThreshold
         else { return }
         pressOrigin = nil
@@ -1588,6 +1658,7 @@ extension IslandController {
         let wasCalendar = model.calendar
         let wasClipboard = model.clipboard
         let wasTray = (model.tray, model.trayTargeted)
+        let wasDesktopControl = model.desktopControl
         // Los monitores solo corren con la pestaña a la vista: el snapshot enseña la última medida que haya
         if tab == .developer {
             model.system = tools.system.snapshot
@@ -1602,6 +1673,8 @@ extension IslandController {
             model.tray = tray.snapshotForImage
             model.trayTargeted = trayTargeted
         }
+        // El panel de yabai dibuja lo que haya leído: sin los títulos de tus ventanas, que no se guardan en una imagen (queda en la caché)
+        if (tab ?? model.selectedTab) == .desktops { model.desktopControl = desktopControl.snapshotForImage }
         // Con novedades, las alas son más anchas: el layout de la isla abierta se calcula con ellas, como hace apply()
         if badges {
             let layout = IslandLayout(spaces: currentSpaces, statusItems: statusItems() + [.utilities, .developer])
@@ -1643,6 +1716,7 @@ extension IslandController {
             model.calendar = wasCalendar
             model.clipboard = wasClipboard
             (model.tray, model.trayTargeted) = wasTray
+            model.desktopControl = wasDesktopControl
             (model.centerWidth, model.height, model.expanded) = wasGeometry
         }
         let size = CGSize(width: model.islandWidth + 2 * Self.shadowMargin, height: model.islandHeight + Self.shadowMargin)

@@ -117,6 +117,8 @@ struct IslandExpandedLayout: Equatable {
     static let cardWidth: CGFloat = 132
     static let cardHeight: CGFloat = 70
     static let cardSpacing: CGFloat = 8
+    /// La tarjeta «+» de crear un escritorio, con el panel de yabai
+    static let addCardWidth: CGFloat = 40
     static let padding: CGFloat = 14
     /// Como en Atoll, la isla abierta deja al menos 30 pt libres a cada lado de la pantalla
     static let screenMargin: CGFloat = 30
@@ -189,6 +191,8 @@ struct IslandExpandedLayout: Equatable {
         case clipboard(ClipboardControl)
         /// Un archivo de la bandeja o su «×»
         case tray(TrayControl)
+        /// Una ventana o un botón del panel de yabai de Escritorios
+        case desktop(DesktopControl)
         case artwork, previous, playPause, next, keepAwake, settings
         case pomodoroPlayPause, pomodoroSkip, pomodoroStop
     }
@@ -210,6 +214,8 @@ struct IslandExpandedLayout: Equatable {
     /// Sin sesión, solo tiene el botón de empezar
     let pomodoroIdle: Bool
     let hasSettingsButton: Bool
+    /// Con el panel de yabai (las ventanas del escritorio y sus botones) debajo de las tarjetas, en Escritorios
+    let hasDesktopPanel: Bool
     /// Ancho del cuerpo, sin las esquinas superiores cóncavas
     let bodyWidth: CGFloat
     let height: CGFloat
@@ -220,6 +226,15 @@ struct IslandExpandedLayout: Equatable {
     var hasActivity: Bool { hasMedia || hasPomodoro }
     /// La música y el Pomodoro comparten la fila
     var sharesActivityRow: Bool { hasMedia && hasPomodoro }
+
+    /// Lo que ocupan las tarjetas de los escritorios, y con la tarjeta «+» la fila entera
+    var cardsWidth: CGFloat {
+        CGFloat(spaces.count) * cardWidth + CGFloat(max(0, spaces.count - 1)) * Self.cardSpacing
+    }
+
+    var cardRowWidth: CGFloat {
+        cardsWidth + (hasDesktopPanel && tab == .desktops ? Self.cardSpacing + Self.addCardWidth : 0)
+    }
 
     /// Los íconos de una tarjeta con esas apps: hasta 4 con el ancho normal, menos si hay tantos espacios que las
     /// tarjetas se estrechan. Si no caben todas, se deja sitio al "+n"
@@ -249,7 +264,7 @@ struct IslandExpandedLayout: Equatable {
         tab: IslandTab = .desktops, tabs: [IslandTab] = [.desktops],
         developerModules: [ModuleID] = ModuleID.modules(of: .developer), hasMedia: Bool = false,
         hasKeepAwake: Bool = false, hasPomodoro: Bool = false, pomodoroIdle: Bool = false,
-        hasSettingsButton: Bool = false
+        hasSettingsButton: Bool = false, hasDesktopPanel: Bool = false
     ) {
         self.spaces = spaces
         stripWidth = minBodyWidth
@@ -261,14 +276,19 @@ struct IslandExpandedLayout: Equatable {
         self.hasPomodoro = hasPomodoro
         self.pomodoroIdle = pomodoroIdle
         self.hasSettingsButton = hasSettingsButton
+        self.hasDesktopPanel = hasDesktopPanel
         let count = CGFloat(spaces.count)
         let gaps = max(0, count - 1) * Self.cardSpacing
         let natural: CGFloat
         let content: CGFloat
         switch tab {
         case .desktops:
-            natural = 2 * Self.padding + count * Self.cardWidth + gaps
-            content = Self.cardHeight
+            // Con el panel de yabai, el cuerpo es al menos tan ancho como el panel; las tarjetas siguen midiendo lo mismo y van centradas
+            natural = max(
+                2 * Self.padding + count * Self.cardWidth + gaps + (hasDesktopPanel ? Self.cardSpacing + Self.addCardWidth : 0),
+                hasDesktopPanel ? 2 * Self.padding + DesktopPanelLayout.minWidth : 0
+            )
+            content = Self.cardHeight + (hasDesktopPanel ? DesktopPanelLayout.gap + DesktopPanelLayout.height : 0)
         case .utilities:
             natural = Self.utilitiesBodyWidth
             content = Self.activityHeight + Self.activityGap + Self.moduleHeight
@@ -295,7 +315,8 @@ struct IslandExpandedLayout: Equatable {
             }
         }
         bodyWidth = min(max(minimum, natural), max(minimum, maxBodyWidth))
-        cardWidth = count > 0 ? min(Self.cardWidth, (bodyWidth - 2 * Self.padding - gaps) / count) : 0
+        let addCard = hasDesktopPanel && tab == .desktops ? Self.cardSpacing + Self.addCardWidth : 0
+        cardWidth = count > 0 ? min(Self.cardWidth, (bodyWidth - 2 * Self.padding - gaps - addCard) / count) : 0
         height = topHeight + Self.gapBelowNotch + content + Self.padding
     }
 
@@ -457,9 +478,9 @@ struct IslandExpandedLayout: Equatable {
     func cardIndex(at point: CGPoint, islandWidth: CGFloat, topHeight: CGFloat) -> Int? {
         let top = topHeight + Self.gapBelowNotch
         guard tab == .desktops, !spaces.isEmpty, point.y >= top, point.y < top + Self.cardHeight else { return nil }
-        let rowWidth = CGFloat(spaces.count) * cardWidth + CGFloat(spaces.count - 1) * Self.cardSpacing
-        let x = point.x - (islandWidth - rowWidth) / 2
-        guard x >= 0, x < rowWidth else { return nil }
+        // La fila va centrada con la tarjeta «+» incluida; solo las tarjetas de escritorios responden aquí
+        let x = point.x - (islandWidth - cardRowWidth) / 2
+        guard x >= 0, x < cardsWidth else { return nil }
         let index = Int(x / (cardWidth + Self.cardSpacing))
         let offset = x - CGFloat(index) * (cardWidth + Self.cardSpacing)
         return offset < cardWidth ? index : nil

@@ -10,6 +10,7 @@ struct SettingsTabView: View {
     let claude: ClaudeConnection
     let calendar: CalendarStore
     let clipboard: ClipboardStore
+    let maintenance: YabaiMaintenance
     let showWelcome: () -> Void
 
     var body: some View {
@@ -18,7 +19,7 @@ struct SettingsTabView: View {
         case .island: IslandSettings(settings: settings)
         case .music: MusicSettings(settings: settings)
         case .pomodoro: PomodoroSettings(settings: settings)
-        case .desktops: DesktopSettings(settings: settings)
+        case .desktops: DesktopSettings(settings: settings, maintenance: maintenance)
         case .utilities: UtilitySettings(settings: settings, calendar: calendar, clipboard: clipboard)
         case .developer: DeveloperSettings(settings: settings, claude: claude)
         case .shortcuts: ShortcutSettings(settings: settings)
@@ -664,18 +665,12 @@ private struct PresetCard: View {
 
 private struct DesktopSettings: View {
     @Bindable var settings: AppSettings
+    let maintenance: YabaiMaintenance
 
     var body: some View {
         Form {
-            Section {
-                Toggle("Señales automáticas", isOn: $settings.autoYabaiSignals)
-            } header: {
-                Text("yabai")
-            } footer: {
-                Text("YabaiBar le pide a yabai que la avise al crear, cerrar o minimizar ventanas y al cambiar los espacios o las pantallas, sin tocar tu yabairc. Si yabai se reinicia, las vuelve a añadir. Al apagarlo se quitan, también las de tu yabairc si usan las mismas etiquetas (yb_*), hasta que reinicies yabai.")
-                    .foregroundStyle(.secondary)
-            }
-
+            panelSection
+            yabaiSection
             Section {
                 Toggle("Añadir los atajos de los escritorios nuevos", isOn: $settings.autoDesktopShortcuts)
             } header: {
@@ -684,8 +679,116 @@ private struct DesktopSettings: View {
                 Text("La isla te lleva a cada escritorio pulsando su atajo «Ir al escritorio N». Activado, los escritorios del 1 al 9 que no lo tengan lo reciben solos, con el mismo modificador que los demás (⌥5 si los otros son ⌥1…⌥4). Solo se añaden los que faltan, y la primera vez se guarda una copia de tus atajos en Preferencias.")
                     .foregroundStyle(.secondary)
             }
+            rememberedSection
+            floatSection
+            skhdSection
         }
         .formStyle(.grouped)
+        .task { await maintenance.refreshStatus() }
+    }
+
+    // Los controles de yabai debajo de las tarjetas de la isla, y cómo se cambia de escritorio con un clic
+    private var panelSection: some View {
+        Section {
+            Toggle("Mostrar los controles de yabai en la isla", isOn: $settings.showDesktopPanel)
+            Toggle("Cambiar de escritorio al instante", isOn: $settings.instantSwitch)
+                .disabled(!maintenance.scriptingAddition)
+        } header: {
+            Text("Escritorios en la isla")
+        } footer: {
+            Text("El panel enseña las ventanas del escritorio activo y los botones de yabai (distribución, ventana enfocada, escritorios), y solo consulta a yabai con la pestaña Escritorios a la vista. Cambiar al instante usa «space --focus» de yabai, sin la animación de macOS; necesita la scripting addition. Sin ella, la isla sigue usando el atajo ⌥N.")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var yabaiSection: some View {
+        Section {
+            Toggle("Señales automáticas", isOn: $settings.autoYabaiSignals)
+            LabeledContent("Versión", value: maintenance.version ?? "—")
+            LabeledContent("Scripting addition", value: maintenance.scriptingAddition ? "Cargada" : "No cargada")
+            Button(maintenance.isRestarting ? "Reiniciando…" : "Reiniciar yabai…") { maintenance.restart() }
+                .disabled(maintenance.isRestarting)
+            if maintenance.restartFailed {
+                Text("No se pudo reiniciar yabai. Si el servicio está parado, arráncalo con «yabai --start-service».").foregroundStyle(.orange)
+            }
+        } header: {
+            Text("yabai")
+        } footer: {
+            Text("YabaiBar le pide a yabai que la avise al crear, cerrar o minimizar ventanas y al cambiar los espacios o las pantallas, sin tocar tu yabairc. Si yabai se reinicia, las vuelve a añadir. Al apagarlo se quitan, también las de tu yabairc si usan las mismas etiquetas (yb_*), hasta que reinicies yabai. Mover escritorios, cambiar al instante y fijar una ventana necesitan la scripting addition, que carga el usuario con «sudo yabai --load-sa»; YabaiBar nunca lo hace. Reiniciar yabai pide confirmación.")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    // La distribución que elegiste en la isla para cada escritorio, que yabai pierde al reiniciarse y la app vuelve a poner
+    @ViewBuilder private var rememberedSection: some View {
+        let remembered = LayoutMemory.decode(settings.rememberedLayouts)
+        Section {
+            if remembered.isEmpty {
+                Text("Nada recordado todavía: lo que elijas con los botones de distribución de la isla.").foregroundStyle(.secondary)
+            }
+            ForEach(remembered.keys.sorted(), id: \.self) { index in
+                HStack {
+                    Text("Escritorio \(index)")
+                    Spacer()
+                    Text(remembered[index]?.title ?? "").foregroundStyle(.secondary)
+                    Button("Olvidar") { maintenance.forgetLayout(of: index) }
+                }
+            }
+            if remembered.count > 1 {
+                Button("Olvidar todas") { maintenance.forgetAllLayouts() }
+            }
+        } header: {
+            Text("Distribución recordada")
+        } footer: {
+            Text("Cuando yabai se reinicia, la app vuelve a poner la distribución de los escritorios donde la cambiaste desde la isla. Se guarda por número de escritorio.")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    // Las apps que siempre flotan: una regla de yabai (manage=off) que la app vuelve a añadir cuando yabai se reinicia
+    @ViewBuilder private var floatSection: some View {
+        Section {
+            if settings.floatApps.isEmpty {
+                Text("Ninguna: se añaden con el botón «Esta app, siempre flotante» de la ventana enfocada en la isla.").foregroundStyle(.secondary)
+            }
+            ForEach(settings.floatApps, id: \.self) { app in
+                HStack {
+                    Text(app).lineLimit(1)
+                    Spacer()
+                    Button("Quitar") { maintenance.removeFloatApp(app) }
+                }
+            }
+        } header: {
+            Text("Apps siempre flotantes")
+        } footer: {
+            Text("Sus ventanas no se colocan en el mosaico. Se aplican a las ventanas nuevas y, al añadirlas, a las que ya hay.")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    // Los atajos de ~/.config/skhd/skhdrc, agrupados por sus comentarios y en solo lectura: YabaiBar nunca escribe en él
+    @ViewBuilder private var skhdSection: some View {
+        Section {
+            if let groups = maintenance.cheatSheet {
+                ForEach(groups) { group in
+                    DisclosureGroup("\(group.title) (\(group.bindings.count))") {
+                        ForEach(Array(group.bindings.enumerated()), id: \.offset) { _, binding in
+                            HStack(alignment: .firstTextBaseline) {
+                                Text(binding.keys).font(.system(.body, design: .monospaced)).frame(width: 110, alignment: .leading)
+                                Text(binding.command).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                            }
+                        }
+                    }
+                }
+            } else {
+                Text("No hay un skhdrc en ~/.config/skhd.").foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Chuleta de skhd")
+        } footer: {
+            Text("Solo lectura. Para cambiarlos, edita el archivo.")
+                .foregroundStyle(.secondary)
+        }
     }
 }
 

@@ -9,7 +9,7 @@ struct ModelDecodingTests {
           "first-window":10,"last-window":11,"has-focus":true,"is-visible":true,"is-native-fullscreen":false}]
         """
         let spaces = try JSONDecoder().decode([YabaiSpace].self, from: Data(json.utf8))
-        #expect(spaces == [YabaiSpace(id: 3, index: 1, display: 1, windows: [10, 11], hasFocus: true, isVisible: true, isNativeFullscreen: false)])
+        #expect(spaces == [YabaiSpace(id: 3, index: 1, display: 1, windows: [10, 11], hasFocus: true, isVisible: true, isNativeFullscreen: false, type: "bsp")])
     }
 
     @Test func fullscreenFlagIsOptional() throws {
@@ -26,7 +26,7 @@ struct ModelDecodingTests {
           "is-minimized":true,"is-hidden":false,"is-sticky":false,"has-focus":false}]
         """
         let windows = try JSONDecoder().decode([YabaiWindow].self, from: Data(json.utf8))
-        #expect(windows == [YabaiWindow(id: 7, pid: 501, app: "Safari", space: 2, isMinimized: true, isHidden: false)])
+        #expect(windows == [YabaiWindow(id: 7, pid: 501, app: "Safari", space: 2, isMinimized: true, isHidden: false, title: "", hasFocus: false, isSticky: false)])
     }
 
     @Test func realSpacesFixtureHasUniqueIndicesAndOneFocusedSpace() throws {

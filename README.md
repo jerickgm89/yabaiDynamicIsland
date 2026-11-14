@@ -168,6 +168,15 @@ El historial está apagado hasta que lo enciendes (el botón «Activar el histor
 </details>
 
 <details>
+<summary>Escritorios: el panel de yabai</summary>
+
+Debajo de las tarjetas de la pestaña Escritorios hay un panel con las ventanas del escritorio activo y los botones de yabai. **Ventanas:** un clic enfoca una; arrastrarla a la tarjeta de otro escritorio la mueve. **Distribución:** mosaico, pila o flotante, equilibrar, girar, voltear y modo presentación (sin márgenes ni huecos). **Ventana enfocada:** flotante o mosaico, zoom, cambiar la división, hacerla principal, «esta app, siempre flotante», en todos los escritorios y siempre encima. **Escritorio:** nuevo, quitar (con confirmación) y mover. Cada tarjeta lleva un ícono con su distribución.
+
+Fijar, siempre encima, crear, quitar y mover escritorios y cambiar al instante necesitan la **scripting addition** de yabai (`sudo yabai --load-sa`, que haces tú; YabaiBar nunca la carga): sin ella, esos botones se ven atenuados y dicen cómo cargarla. YabaiBar recuerda la distribución que eliges para cada escritorio y las apps siempre flotantes, y las vuelve a poner cuando yabai se reinicia. En Ajustes › Escritorios: el estado de yabai, «Reiniciar yabai…» (con confirmación), lo recordado y la chuleta de tus atajos de skhd (solo lectura). Con la pestaña cerrada, el panel no consulta nada a yabai.
+
+</details>
+
+<details>
 <summary>Bandeja: soltar y sacar archivos</summary>
 
 El módulo Bandeja de la pestaña Utilidades guarda archivos para llevarlos a otra app. **Arrastra un archivo sobre la isla** (cerrada o abierta): se abre en Utilidades y resalta la bandeja; suéltalo y queda guardado (hasta 12, el último arriba). **Para sacarlo, arrástralo desde la bandeja** a cualquier app, o haz clic para verlo en el Finder; la «×» al pasar el puntero lo quita de la bandeja (no del disco).

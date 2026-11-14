@@ -46,7 +46,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             case .island: 540
             case .music: 260
             case .pomodoro: 720
-            case .desktops: 400
+            case .desktops: 860
             case .utilities: 760
             case .developer: 760
             case .shortcuts: 420
@@ -64,6 +64,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     private let claude: ClaudeConnection
     private let calendar: CalendarStore
     private let clipboard: ClipboardStore
+    private let maintenance: YabaiMaintenance
     private let showWelcome: @MainActor () -> Void
     private var window: NSWindow?
     private var tabs: NSTabViewController?
@@ -72,13 +73,14 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
 
     init(
         settings: AppSettings, launchAtLogin: LaunchAtLogin, claude: ClaudeConnection, calendar: CalendarStore,
-        clipboard: ClipboardStore, showWelcome: @escaping @MainActor () -> Void
+        clipboard: ClipboardStore, maintenance: YabaiMaintenance, showWelcome: @escaping @MainActor () -> Void
     ) {
         self.settings = settings
         self.launchAtLogin = launchAtLogin
         self.claude = claude
         self.calendar = calendar
         self.clipboard = clipboard
+        self.maintenance = maintenance
         self.showWelcome = showWelcome
     }
 
@@ -99,7 +101,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         for tab in Tab.allCases {
             let content = SettingsTabView(
                 tab: tab, settings: settings, launchAtLogin: launchAtLogin, claude: claude, calendar: calendar, clipboard: clipboard,
-                showWelcome: { [weak self] in
+                maintenance: maintenance, showWelcome: { [weak self] in
                     self?.handingOff = true
                     self?.window?.close()
                     self?.showWelcome()

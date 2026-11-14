@@ -48,6 +48,10 @@ final class IslandModel {
     /// Los archivos de la bandeja, y si se está arrastrando un archivo sobre la isla (la bandeja se resalta)
     var tray: TraySnapshot?
     var trayTargeted = false
+    /// Las ventanas del escritorio activo y el resultado de lo último que se pidió a yabai
+    var desktopControl = DesktopControlSnapshot()
+    /// El escritorio sobre el que se suelta una ventana que se arrastra desde el panel
+    var dropSpace: Int?
     /// Los íconos de los archivos de la bandeja
     @ObservationIgnored let trayIcons = TrayIcons()
     var hoveredRow: String?
@@ -176,7 +180,7 @@ struct IslandView: View {
     // El contenido de la pestaña elegida, debajo de la franja del notch, donde siempre se ven las alas
     @ViewBuilder private var tabContent: some View {
         switch model.selectedTab {
-        case .desktops: cards
+        case .desktops: desktops
         case .utilities: utilities
         case .developer: moduleGrid(model.expanded.developerGrid)
         }
@@ -187,6 +191,14 @@ struct IslandView: View {
         VStack(spacing: IslandExpandedLayout.activityGap) {
             activityRow
             moduleGrid(model.expanded.utilityModules)
+        }
+    }
+
+    // Escritorios: las tarjetas y, debajo, el panel de yabai
+    private var desktops: some View {
+        VStack(spacing: DesktopPanelLayout.gap) {
+            cards
+            if model.expanded.hasDesktopPanel { desktopPanel }
         }
     }
 
@@ -203,6 +215,8 @@ struct IslandView: View {
                                 .animation(.smooth(duration: 0.25).delay(Double(position) * 0.03))
                     )
             }
+            // Con el panel de yabai, la tarjeta «+» de crear un escritorio cierra la fila
+            if model.expanded.hasDesktopPanel { addCard }
         }
         .sensoryFeedback(.alignment, trigger: model.hoveredSpace) { _, hovered in hovered != nil }
     }
@@ -212,13 +226,21 @@ struct IslandView: View {
         let hovered = model.hoveredSpace == space.index
         let shape = RoundedRectangle(cornerRadius: hovered ? Self.hoveredCardRadius : Self.cardRadius, style: .continuous)
         // El activo lleva siempre su color; bajo el puntero, cualquiera lo muestra más suave
-        let border = space.isFocused ? accent : hovered ? accent.opacity(0.55) : .clear
+        // Arrastrando una ventana del panel, la tarjeta donde se soltaría se marca con su color
+        let dropping = model.dropSpace == space.index
+        let border = space.isFocused ? accent : (hovered || dropping) ? accent.opacity(dropping ? 1 : 0.55) : .clear
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("\(space.index)")
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(accent)
                 Spacer(minLength: 0)
+                // La distribución de yabai en este escritorio, antes del atajo, como en el diseño
+                if let layout = space.layout, let symbol = DesktopControl.layout(layout).symbol {
+                    Image(systemName: symbol)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.white.opacity(hovered ? 0.85 : 0.7))
+                }
                 if let label = model.shortcutLabels[space.index] {
                     Text(label)
                         .font(.system(size: 10, weight: .medium))
@@ -258,9 +280,275 @@ struct IslandView: View {
         }
         .padding(IslandExpandedLayout.cardPadding)
         .frame(width: model.expanded.cardWidth, height: IslandExpandedLayout.cardHeight, alignment: .topLeading)
-        .background(shape.fill(.white.opacity(hovered ? 0.12 : 0.06)))
+        .background(shape.fill(dropping ? accent.opacity(0.22) : .white.opacity(hovered ? 0.12 : 0.06)))
         .overlay(shape.strokeBorder(border, lineWidth: 1.5))
         .scaleEffect(cardScale(for: space))
+    }
+
+    // MARK: - El panel de yabai
+
+    // Como en el diseño: cinco secciones en tarjetas. Arriba, las ventanas del escritorio activo (un clic la enfoca; arrastrarla a una tarjeta
+    // la mueve) y la distribución (el segmentado, equilibrar, rotar y los dos espejos, y «Recordar en el N»). Debajo, la ventana enfocada, el
+    // escritorio (la presentación) y yabai (la versión y la chuleta de skhd). Los marcos salen de DesktopPanelLayout, que también resuelve
+    // los clics. Los botones de la pila, de «en todos los escritorios», «encima» y de quitar y mover un escritorio son botoncitos en la
+    // cabecera de su sección; con el puntero encima, la cabecera dice cómo se llama el botón
+    private var desktopPanel: some View {
+        let snapshot = model.desktopControl
+        let width = model.expanded.mediaWidth
+        let frames = DesktopPanelLayout.frames(width: width, windowCount: snapshot.windows.count)
+        let hovered: DesktopControl? = {
+            if case .desktop(let control) = model.hoveredControl { return control }
+            return nil
+        }()
+        let sections = [frames.windowsSection, frames.layoutSection, frames.focusedSection, frames.spaceSection, frames.statusSection]
+        return ZStack(alignment: .topLeading) {
+            ForEach(Array(sections.enumerated()), id: \.offset) { _, rect in
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(.white.opacity(0.06))
+                    .frame(width: rect.width, height: rect.height)
+                    .offset(x: rect.minX, y: rect.minY)
+            }
+            desktopHeaders(snapshot, frames: frames, hovered: hovered)
+            // Las ventanas
+            if snapshot.windows.isEmpty {
+                Text(snapshot.spaceIndex == nil ? "Leyendo yabai…" : "Sin ventanas en este escritorio")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.4))
+                    .frame(height: DesktopPanelLayout.chipHeight, alignment: .leading)
+                    .offset(
+                        x: frames.windowsSection.minX + DesktopPanelLayout.padding,
+                        y: frames.windowsSection.minY + DesktopPanelLayout.padding + DesktopPanelLayout.headerHeight + 8
+                    )
+            }
+            ForEach(Array(frames.chips.enumerated()), id: \.offset) { slot, frame in
+                if let window = snapshot.windows[safe: slot] { desktopChip(window, frame: frame) }
+            }
+            if let overflow = frames.overflow {
+                Text("+\(snapshot.windows.count - frames.chips.count)")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.6))
+                    .frame(width: overflow.width, height: overflow.height)
+                    .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(.white.opacity(0.08)))
+                    .offset(x: overflow.minX, y: overflow.minY)
+            }
+            ForEach(Array(frames.stack.enumerated()), id: \.offset) { _, button in desktopMini(button, snapshot: snapshot) }
+            // La distribución
+            desktopRemember(frames.remember, snapshot: snapshot)
+            desktopSegmented(frames, snapshot: snapshot)
+            ForEach(Array(frames.layoutIcons.enumerated()), id: \.offset) { _, button in desktopIconButton(button, snapshot: snapshot) }
+            // La ventana enfocada y el escritorio
+            ForEach(Array(frames.focusedText.enumerated()), id: \.offset) { _, button in desktopTextButton(button, snapshot: snapshot) }
+            ForEach(Array(frames.focusedMini.enumerated()), id: \.offset) { _, button in desktopMini(button, snapshot: snapshot) }
+            desktopSwitch(frames.presentation, snapshot: snapshot)
+            ForEach(Array(frames.spaceMini.enumerated()), id: \.offset) { _, button in desktopMini(button, snapshot: snapshot) }
+            desktopTextButton(frames.skhd, snapshot: snapshot)
+        }
+        .frame(width: width, height: DesktopPanelLayout.height, alignment: .topLeading)
+    }
+
+    // Las cabeceras de las cinco secciones: su título en mayúsculas pequeñas, o el nombre del botón que está bajo el puntero
+    @ViewBuilder private func desktopHeaders(_ snapshot: DesktopControlSnapshot, frames: DesktopPanelFrames, hovered: DesktopControl?) -> some View {
+        let layout = DesktopPanelLayout.self
+        let windows = frames.windowsSection
+        let layoutSection = frames.layoutSection
+        let focused = frames.focusedSection
+        let space = frames.spaceSection
+        let status = frames.statusSection
+        let inWindows: DesktopControl? = hovered.flatMap { control in
+            if case .window = control { return control }
+            if case .stack = control { return control }
+            return nil
+        }
+        let inLayout = hovered.flatMap { control in frames.segments.contains { $0.control == control } || frames.layoutIcons.contains { $0.control == control } || control == .rememberLayout ? control : nil }
+        let inFocused = hovered.flatMap { control in frames.focusedText.contains { $0.control == control } || frames.focusedMini.contains { $0.control == control } ? control : nil }
+        let inSpace = hovered.flatMap { control in control == .presentation || frames.spaceMini.contains { $0.control == control } ? control : nil }
+        desktopHeader(
+            inWindows?.title(snapshot: snapshot) ?? "Ventanas del escritorio \(snapshot.spaceIndex.map(String.init) ?? "")",
+            in: windows, top: windows.minY + layout.padding, trailing: 2 * layout.miniSize.width + layout.miniSpacing + 6
+        )
+        desktopHeader(inLayout?.title(snapshot: snapshot) ?? "Distribución", in: layoutSection, top: layoutSection.minY + layout.padding, trailing: layout.pillSize.width + 6)
+        desktopHeader(
+            inFocused?.title(snapshot: snapshot) ?? "Ventana enfocada", in: focused, top: focused.minY + layout.secondaryInsetY,
+            trailing: 2 * layout.miniSize.width + layout.miniSpacing + 6
+        )
+        desktopHeader(
+            inSpace?.title(snapshot: snapshot) ?? "Escritorio", in: space, top: space.minY + layout.secondaryInsetY,
+            trailing: 3 * layout.miniSize.width + 2 * layout.miniSpacing + 4
+        )
+        // yabai: la versión y, a la derecha, el resultado de lo último (en naranja si falló) o «sin SA»
+        let version = (snapshot.yabaiVersion ?? "yabai").replacingOccurrences(of: "yabai-v", with: "yabai ")
+        let trailing: (text: String, color: Color)? = snapshot.message.map { ($0.text, $0.isError ? Color.orange : .white.opacity(0.75)) }
+            ?? (snapshot.scriptingAddition ? nil : ("sin SA", Color.orange))
+        desktopHeader(version, in: status, top: status.minY + layout.secondaryInsetY, trailing: trailing == nil ? 0 : min(110, status.width * 0.5))
+        if let trailing {
+            Text(trailing.text)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(trailing.color)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(width: min(110, status.width * 0.5), height: layout.headerHeight, alignment: .trailing)
+                .offset(x: status.maxX - layout.padding - min(110, status.width * 0.5), y: status.minY + layout.secondaryInsetY)
+        }
+    }
+
+    private func desktopHeader(_ text: String, in section: CGRect, top: CGFloat, trailing: CGFloat) -> some View {
+        Text(text.uppercased())
+            .font(.system(size: 10, weight: .semibold))
+            .tracking(0.4)
+            .foregroundStyle(.white.opacity(0.6))
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .frame(width: max(0, section.width - 2 * DesktopPanelLayout.padding - trailing), height: DesktopPanelLayout.headerHeight, alignment: .leading)
+            .offset(x: section.minX + DesktopPanelLayout.padding, y: top)
+    }
+
+    private func desktopChip(_ window: DesktopWindow, frame: CGRect) -> some View {
+        let hovered = model.hoveredControl == .desktop(.window(window.id))
+        let pressed = model.pressedControl == .desktop(.window(window.id))
+        let shape = RoundedRectangle(cornerRadius: 9, style: .continuous)
+        return HStack(spacing: 6) {
+            Image(nsImage: model.icons[window.pid] ?? NSImage())
+                .resizable()
+                .frame(width: 20, height: 20)
+                .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+            Text(window.title)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, 5)
+        .padding(.trailing, 8)
+        .frame(width: frame.width, height: frame.height)
+        .background(shape.fill(.white.opacity(window.isFocused ? 0.1 : pressed ? 0.16 : hovered ? 0.13 : 0.08)))
+        // La enfocada lleva su color; las flotantes, el borde de rayas
+        .overlay(shape.strokeBorder(window.isFocused ? SpaceAccent.color(for: 1) : .clear, lineWidth: 1.5))
+        .overlay(shape.strokeBorder(.white.opacity(window.isFloating ? 0.3 : 0), style: StrokeStyle(lineWidth: 1, dash: [3, 2])))
+        .scaleEffect(!model.reduceMotion && pressed ? 0.97 : 1)
+        .offset(x: frame.minX, y: frame.minY)
+    }
+
+    // Los botoncitos de la cabecera de una sección: la pila, en todos los escritorios, encima, quitar y mover un escritorio
+    private func desktopMini(_ button: DesktopPanelFrames.Button, snapshot: DesktopControlSnapshot) -> some View {
+        let hovered = model.hoveredControl == .desktop(button.control)
+        let pressed = model.pressedControl == .desktop(button.control)
+        let on = button.control.isOn(snapshot: snapshot)
+        let dim = button.control.isDimmed(snapshot: snapshot)
+        return Image(systemName: button.control.symbol ?? "questionmark")
+            .font(.system(size: 9, weight: .bold))
+            .foregroundStyle(.white.opacity(dim ? 0.3 : 1))
+            .frame(width: button.frame.width, height: button.frame.height)
+            .background(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(on ? SpaceAccent.color(for: 1).opacity(0.45) : .white.opacity(pressed ? 0.2 : hovered ? 0.16 : 0.1))
+            )
+            .scaleEffect(!model.reduceMotion && pressed ? 0.92 : 1)
+            .offset(x: button.frame.minX, y: button.frame.minY)
+    }
+
+    // «Recordar en el N», una pastilla: encendida, con el color de acento
+    private func desktopRemember(_ button: DesktopPanelFrames.Button, snapshot: DesktopControlSnapshot) -> some View {
+        let on = DesktopControl.rememberLayout.isOn(snapshot: snapshot)
+        let hovered = model.hoveredControl == .desktop(.rememberLayout)
+        let accent = Color(red: 138.0 / 255, green: 180.0 / 255, blue: 1)
+        return Text("Recordar en el \(snapshot.spaceIndex.map(String.init) ?? "")")
+            .font(.system(size: 9.5, weight: .bold))
+            .foregroundStyle(on ? accent : .white.opacity(0.65))
+            .lineLimit(1)
+            .frame(width: button.frame.width, height: button.frame.height)
+            .background(Capsule().fill(on ? accent.opacity(0.22) : .white.opacity(hovered ? 0.14 : 0.08)))
+            .offset(x: button.frame.minX, y: button.frame.minY)
+    }
+
+    // BSP, Pila y Flotante en un segmentado: la distribución actual, marcada
+    private func desktopSegmented(_ frames: DesktopPanelFrames, snapshot: DesktopControlSnapshot) -> some View {
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(.white.opacity(0.08))
+                .frame(width: frames.segmentedTrack.width, height: frames.segmentedTrack.height)
+                .offset(x: frames.segmentedTrack.minX, y: frames.segmentedTrack.minY)
+            ForEach(Array(frames.segments.enumerated()), id: \.offset) { _, button in
+                let selected = button.control.isOn(snapshot: snapshot)
+                let hovered = model.hoveredControl == .desktop(button.control)
+                HStack(spacing: 4) {
+                    Image(systemName: button.control.symbol ?? "questionmark").font(.system(size: 11, weight: .medium))
+                    Text(button.control.label ?? "").font(.system(size: 10.5, weight: .semibold)).lineLimit(1)
+                }
+                .foregroundStyle(.white.opacity(selected ? 1 : 0.68))
+                .frame(width: button.frame.width, height: button.frame.height)
+                .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(.white.opacity(selected ? 0.22 : hovered ? 0.1 : 0)))
+                .offset(x: button.frame.minX, y: button.frame.minY)
+            }
+        }
+    }
+
+    // Equilibrar, rotar y los dos espejos
+    private func desktopIconButton(_ button: DesktopPanelFrames.Button, snapshot: DesktopControlSnapshot) -> some View {
+        let hovered = model.hoveredControl == .desktop(button.control)
+        let pressed = model.pressedControl == .desktop(button.control)
+        return Image(systemName: button.control.symbol ?? "questionmark")
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(.white.opacity(0.85))
+            .frame(width: button.frame.width, height: button.frame.height)
+            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(.white.opacity(pressed ? 0.2 : hovered ? 0.14 : 0.08)))
+            .scaleEffect(!model.reduceMotion && pressed ? 0.94 : 1)
+            .offset(x: button.frame.minX, y: button.frame.minY)
+    }
+
+    // Los botones de texto de «Ventana enfocada» y el de la chuleta de skhd
+    private func desktopTextButton(_ button: DesktopPanelFrames.Button, snapshot: DesktopControlSnapshot) -> some View {
+        let hovered = model.hoveredControl == .desktop(button.control)
+        let pressed = model.pressedControl == .desktop(button.control)
+        let on = button.control.isOn(snapshot: snapshot)
+        let dim = button.control.isDimmed(snapshot: snapshot)
+        return Text(button.control.label ?? "")
+            .font(.system(size: 10.5, weight: .semibold))
+            .foregroundStyle(.white.opacity(dim ? 0.35 : 1))
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .frame(width: button.frame.width, height: button.frame.height)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(on ? SpaceAccent.color(for: 1).opacity(0.4) : .white.opacity(pressed ? 0.2 : hovered ? 0.16 : 0.1))
+            )
+            .scaleEffect(!model.reduceMotion && pressed ? 0.95 : 1)
+            .offset(x: button.frame.minX, y: button.frame.minY)
+    }
+
+    // «Presentación» con su interruptor: encendido, el escritorio no tiene márgenes ni huecos
+    private func desktopSwitch(_ button: DesktopPanelFrames.Button, snapshot: DesktopControlSnapshot) -> some View {
+        let on = DesktopControl.presentation.isOn(snapshot: snapshot)
+        let hovered = model.hoveredControl == .desktop(.presentation)
+        return HStack {
+            Text("Presentación")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.white.opacity(hovered ? 1 : 0.92))
+            Spacer(minLength: 0)
+            Capsule()
+                .fill(on ? SpaceAccent.color(for: 1) : .white.opacity(0.22))
+                .frame(width: DesktopPanelLayout.switchSize.width, height: DesktopPanelLayout.switchSize.height)
+                .overlay(alignment: on ? .trailing : .leading) {
+                    Circle().fill(.white).frame(width: 14, height: 14).padding(2)
+                }
+        }
+        .frame(width: button.frame.width, height: button.frame.height)
+        .offset(x: button.frame.minX, y: button.frame.minY)
+    }
+
+    // La tarjeta «+» que crea un escritorio, con borde de rayas, a la derecha de las demás
+    private var addCard: some View {
+        let hovered = model.hoveredControl == .desktop(.newSpace)
+        let pressed = model.pressedControl == .desktop(.newSpace)
+        let dim = !model.desktopControl.scriptingAddition
+        let shape = RoundedRectangle(cornerRadius: Self.cardRadius, style: .continuous)
+        return Image(systemName: "plus")
+            .font(.system(size: 13, weight: .bold))
+            .foregroundStyle(.white.opacity(dim ? 0.4 : 0.75))
+            .frame(width: IslandExpandedLayout.addCardWidth, height: IslandExpandedLayout.cardHeight)
+            .background(shape.fill(.white.opacity(hovered ? 0.08 : 0)))
+            .overlay(shape.strokeBorder(.white.opacity(0.4), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3])))
+            .scaleEffect(!model.reduceMotion && pressed ? 0.94 : 1)
     }
 
     // MARK: - La fila de la música y el Pomodoro

@@ -24,6 +24,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var calendar: CalendarStore?
     private var clipboard: ClipboardStore?
     private var tray: TrayStore?
+    private var desktopControl: DesktopControlStore?
+    private var maintenance: YabaiMaintenance?
     private var toggleKey: GlobalHotKey?
     private var pomodoroKey: GlobalHotKey?
     private var trackpad: TrackpadMonitor?
@@ -87,19 +89,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // La bandeja de archivos: lo que se suelta en la isla, por referencia, guardado en UserDefaults
         let tray = TrayStore(defaults: .standard)
         self.tray = tray
+        // El panel de yabai de Escritorios: las ventanas del escritorio activo y lo que se pulsa, con el mismo cliente que lo demás
+        let desktopControl = DesktopControlStore(query: yabai, control: yabai, settings: settings)
+        desktopControl.onChanged = { [weak store] in store?.requestRefresh() }
+        self.desktopControl = desktopControl
+        // Lo que la app hace por yabai fuera de la isla: contar cómo está, volver a poner lo recordado tras un reinicio y reiniciarlo
+        let maintenance = YabaiMaintenance(client: yabai, settings: settings, store: store)
+        self.maintenance = maintenance
         let settingsWindow = SettingsWindow(
-            settings: settings, launchAtLogin: launchAtLogin, claude: claudeConnection, calendar: calendar, clipboard: clipboard
+            settings: settings, launchAtLogin: launchAtLogin, claude: claudeConnection, calendar: calendar, clipboard: clipboard,
+            maintenance: maintenance
         ) {
             welcome.show()
         }
         self.settingsWindow = settingsWindow
         let menu = AppMenu(
             store: store, launchAtLogin: launchAtLogin, settingsWindow: settingsWindow,
-            welcomeWindow: welcome, pomodoro: pomodoro, settings: settings
+            welcomeWindow: welcome, pomodoro: pomodoro, settings: settings, maintenance: maintenance
         )
         self.menu = menu
         // Las señales que refrescan la isla, sin tocar el yabairc. En los tests no: cambiarían el yabai real
-        if !isTestHost { signals = YabaiSignals(client: yabai, settings: settings, store: store) }
+        if !isTestHost {
+            let signals = YabaiSignals(client: yabai, settings: settings, store: store)
+            signals.onYabaiRestarted = { [weak maintenance] in maintenance?.yabaiRestarted() }
+            self.signals = signals
+            maintenance.start()
+        }
         let media = NowPlayingStore(adapter: isTestHost ? nil : MediaRemoteAdapter(), settings: settings)
         self.media = media
         let claude = ClaudeSessions(connection: claudeConnection)
@@ -125,7 +140,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let island = IslandController(
             store: store, icons: AppIcons(), menu: menu, focuser: focuser, settings: settings, media: media,
-            keepAwake: KeepAwake(), pomodoro: pomodoro, calendar: calendar, clipboard: clipboard, tray: tray, tools: tools
+            keepAwake: KeepAwake(), pomodoro: pomodoro, calendar: calendar, clipboard: clipboard, tray: tray, desktopControl: desktopControl, tools: tools
         )
         self.island = island
         island.onMissingShortcut = { [weak desktopShortcuts] in desktopShortcuts?.offer() }
@@ -306,6 +321,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     // arrastrar un archivo sobre la isla
                     let trayDemo = flags.contains("bandeja-demo") || flags.contains("bandeja-arrastre")
                     if trayDemo { self.tray?.injectDemo(count: flags.contains("bandeja-vacia") ? 0 : 7) }
+                    // yabai-demo, yabai-pila, yabai-sa y yabai-mensaje: ventanas inventadas en el panel de yabai de Escritorios
+                    let yabaiDemo = flags.contains("yabai-demo") || flags.contains("yabai-pila")
+                    if yabaiDemo {
+                        self.desktopControl?.injectDemo(
+                            layout: flags.contains("yabai-pila") ? .stack : .bsp, scriptingAddition: flags.contains("yabai-sa"),
+                            message: flags.contains("yabai-mensaje") ? DesktopControlMessage(text: DesktopControlText.needsScriptingAddition, isError: true) : nil
+                        )
+                    }
                     // calendario-demo: eventos inventados (con permiso, aunque no lo haya) en el módulo Calendario
                     let calendarDemo = flags.contains("calendario-demo")
                     if calendarDemo { self.calendar?.injectDemo() }
@@ -317,6 +340,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         if calendarDemo { self.calendar?.resetInjected() }
                         if clipboardDemo { self.clipboard?.resetInjected() }
                         if trayDemo { self.tray?.resetInjected() }
+                        if yabaiDemo { self.desktopControl?.resetInjected() }
                         if flags.contains("claude-demo") { self.tools?.claude.resetInjected() }
                         if flags.contains("git-demo") { self.tools?.git.resetInjected() }
                     }

@@ -11,10 +11,11 @@ final class AppMenu: NSObject, NSMenuDelegate {
     private let welcomeWindow: WelcomeWindow
     private let pomodoro: PomodoroStore
     private let settings: AppSettings
+    private let maintenance: YabaiMaintenance
 
     init(
         store: SpacesStore, launchAtLogin: LaunchAtLogin, settingsWindow: SettingsWindow, welcomeWindow: WelcomeWindow,
-        pomodoro: PomodoroStore, settings: AppSettings
+        pomodoro: PomodoroStore, settings: AppSettings, maintenance: YabaiMaintenance
     ) {
         self.store = store
         self.launchAtLogin = launchAtLogin
@@ -22,8 +23,18 @@ final class AppMenu: NSObject, NSMenuDelegate {
         self.welcomeWindow = welcomeWindow
         self.pomodoro = pomodoro
         self.settings = settings
+        self.maintenance = maintenance
         super.init()
         menu.delegate = self
+    }
+
+    private func isNotInstalled(_ error: YabaiError) -> Bool {
+        if case .notInstalled = error { return true }
+        return false
+    }
+
+    @objc private func restartYabai() {
+        maintenance.restart()
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
@@ -31,6 +42,12 @@ final class AppMenu: NSObject, NSMenuDelegate {
         if let error = store.lastError {
             // Sin acción: el menú lo muestra deshabilitado, como un aviso
             menu.addItem(NSMenuItem(title: error.userMessage, action: nil, keyEquivalent: ""))
+            // Si yabai está instalado pero no responde, reiniciarlo (con confirmación) es lo que suele arreglarlo
+            if !isNotInstalled(error) {
+                let restart = NSMenuItem(title: "Reiniciar yabai…", action: #selector(restartYabai), keyEquivalent: "")
+                restart.target = self
+                menu.addItem(restart)
+            }
             menu.addItem(.separator())
         }
 

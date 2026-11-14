@@ -10,6 +10,8 @@ struct SpaceSummary: Equatable, Sendable, Identifiable {
     let isFocused: Bool
     let apps: [SpaceApp]
     var isFullscreen = false
+    /// La distribución de yabai en este escritorio, si la dijo
+    var layout: YabaiLayout? = nil
 
     var id: Int { index }
 }
@@ -35,7 +37,7 @@ enum SpaceGrouper {
                     .map { SpaceApp(pid: $0.pid, name: $0.app.trimmingCharacters(in: invisibleCharacters)) }
                 return SpaceSummary(
                     index: space.index, isFocused: space.hasFocus, apps: apps,
-                    isFullscreen: space.isNativeFullscreen ?? false
+                    isFullscreen: space.isNativeFullscreen ?? false, layout: space.type.flatMap(YabaiLayout.init(rawValue:))
                 )
             }
     }

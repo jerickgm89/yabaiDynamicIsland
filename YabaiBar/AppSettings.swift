@@ -139,6 +139,29 @@ final class AppSettings {
         didSet { defaults.set(showPomodoroRing, forKey: Key.showPomodoroRing) }
     }
 
+    /// El panel de yabai (las ventanas del escritorio activo y sus botones) debajo de las tarjetas de Escritorios. Apagado, no se ve ni
+    /// consulta nada
+    var showDesktopPanel: Bool {
+        didSet { defaults.set(showDesktopPanel, forKey: Key.showDesktopPanel) }
+    }
+
+    /// Cambiar de escritorio con un clic en su tarjeta usa `space --focus` de yabai (al instante, sin la animación de macOS) en vez del
+    /// atajo ⌥N. Necesita la scripting addition: sin ella se sigue usando el atajo
+    var instantSwitch: Bool {
+        didSet { defaults.set(instantSwitch, forKey: Key.instantSwitch) }
+    }
+
+    /// La distribución que el usuario eligió para cada escritorio (índice → bsp, stack o float), que yabai pierde al reiniciarse y la app
+    /// vuelve a poner
+    var rememberedLayouts: [String: String] {
+        didSet { defaults.set(rememberedLayouts, forKey: Key.rememberedLayouts) }
+    }
+
+    /// Las apps (por su nombre) que siempre flotan: una regla de yabai que la app vuelve a añadir cuando yabai se reinicia
+    var floatApps: [String] {
+        didSet { defaults.set(floatApps, forKey: Key.floatApps) }
+    }
+
     /// El módulo Docker de la pestaña Desarrollador. Apagado, no se ve ni consulta nada
     var showDocker: Bool {
         didSet { defaults.set(showDocker, forKey: Key.showDocker) }
@@ -320,6 +343,10 @@ final class AppSettings {
         static let pomodoroDailyGoal = "pomodoroDailyGoal"
         static let showPomodoroRing = "showPomodoroRing"
         static let showDocker = "showDocker"
+        static let showDesktopPanel = "showDesktopPanel"
+        static let instantSwitch = "instantSwitch"
+        static let rememberedLayouts = "rememberedLayouts"
+        static let floatApps = "floatApps"
         static let claudeNotifyFinished = "claudeNotifyFinished"
         static let showGit = "showGit"
         static let gitUseGitHub = "gitUseGitHub"
@@ -377,6 +404,10 @@ final class AppSettings {
         pomodoroDailyGoal = int(Key.pomodoroDailyGoal, Self.dailyGoals, 8)
         showPomodoroRing = defaults.object(forKey: Key.showPomodoroRing) as? Bool ?? true
         showDocker = defaults.object(forKey: Key.showDocker) as? Bool ?? true
+        showDesktopPanel = defaults.object(forKey: Key.showDesktopPanel) as? Bool ?? true
+        instantSwitch = defaults.object(forKey: Key.instantSwitch) as? Bool ?? false
+        rememberedLayouts = defaults.dictionary(forKey: Key.rememberedLayouts) as? [String: String] ?? [:]
+        floatApps = (defaults.stringArray(forKey: Key.floatApps) ?? []).compactMap(YabaiRules.clean)
         claudeNotifyFinished = defaults.object(forKey: Key.claudeNotifyFinished) as? Bool ?? false
         showGit = defaults.object(forKey: Key.showGit) as? Bool ?? true
         gitUseGitHub = defaults.object(forKey: Key.gitUseGitHub) as? Bool ?? true

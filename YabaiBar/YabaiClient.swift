@@ -14,7 +14,12 @@ protocol YabaiQuerying: Sendable {
     func windows() async throws -> [YabaiWindow]
 }
 
-struct YabaiClient: YabaiQuerying {
+/// Lo que la isla le pide a yabai. En los tests, uno falso que apunta las acciones
+protocol YabaiControlling: Sendable {
+    func perform(_ action: YabaiAction) async throws
+}
+
+struct YabaiClient: YabaiQuerying, YabaiControlling {
     static let candidatePaths = ["/opt/homebrew/bin/yabai", "/usr/local/bin/yabai"]
 
     let executablePath: String
@@ -41,6 +46,50 @@ struct YabaiClient: YabaiQuerying {
 
     func windows() async throws -> [YabaiWindow] {
         try await query("--windows")
+    }
+
+    /// Hace lo que se pide, orden a orden: si una falla (y no es opcional), no se siguen. Si la primera falla y la acción tiene alternativa
+    /// (la pila no da la vuelta sola), se prueba esa
+    func perform(_ action: YabaiAction) async throws {
+        do {
+            try await runCommands(action.commands)
+        } catch let error as YabaiError {
+            guard case .commandFailed = error, let fallback = action.fallback else { throw error }
+            try await runCommands(fallback.commands)
+        }
+    }
+
+    private func runCommands(_ commands: [YabaiCommand]) async throws {
+        for command in commands {
+            do {
+                _ = try await run(command.arguments)
+            } catch let error as YabaiError {
+                // Una opcional que falla porque yabai dice que no (quitar lo que no estaba) no corta la acción; si yabai no responde, sí
+                if command.optional, case .commandFailed = error { continue }
+                throw error
+            }
+        }
+    }
+
+    /// `yabai --version`: «yabai-v7.1.25»
+    func version() async throws -> String {
+        String(decoding: try await run(["--version"], direct: true), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// `yabai --restart-service`: reinicia a yabai. Cambia el estado: solo con la confirmación del usuario
+    func restartService() async throws {
+        _ = try await run(["--restart-service"], direct: true)
+    }
+
+    /// `yabai -m rule --list`: las etiquetas de las reglas que tiene yabai ahora
+    func ruleLabels() async throws -> [String] {
+        struct Rule: Decodable { let label: String? }
+        let data = try await run(["rule", "--list"])
+        do {
+            return try JSONDecoder().decode([Rule].self, from: data).compactMap(\.label)
+        } catch {
+            throw YabaiError.decoding(String(describing: error))
+        }
     }
 
     /// `yabai -m signal …`: lo usa YabaiSignals para añadir y quitar las señales de YabaiBar
@@ -70,22 +119,23 @@ struct YabaiClient: YabaiQuerying {
 
     // Process bloquea hasta que yabai termina, así que corre en una cola global. En el hilo
     // principal waitUntilExit además hace girar el run loop y permite que entre otro refresco.
-    private func run(_ args: [String]) async throws -> Data {
+    private func run(_ args: [String], direct: Bool = false) async throws -> Data {
         guard FileManager.default.isExecutableFile(atPath: executablePath) else {
             throw YabaiError.notInstalled(path: executablePath)
         }
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
-                continuation.resume(with: Result { try runBlocking(args) })
+                continuation.resume(with: Result { try runBlocking(args, direct: direct) })
             }
         }
     }
 
-    private func runBlocking(_ args: [String]) throws -> Data {
-        let command = "yabai -m " + args.joined(separator: " ")
+    // `direct`: las opciones de yabai que no son mensajes (`--version`, `--restart-service`), sin el `-m`
+    private func runBlocking(_ args: [String], direct: Bool) throws -> Data {
+        let command = (direct ? "yabai " : "yabai -m ") + args.joined(separator: " ")
         let process = Process()
         process.executableURL = URL(filePath: executablePath)
-        process.arguments = ["-m"] + args
+        process.arguments = (direct ? [] : ["-m"]) + args
         let output = Pipe()
         let errorOutput = Pipe()
         process.standardOutput = output

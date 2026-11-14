@@ -47,6 +47,8 @@ final class YabaiSignals {
     private let client: YabaiClient
     private let settings: AppSettings
     private let store: SpacesStore
+    /// A yabai le faltaban las señales: se reinició (o es la primera vez). Quien recuerda cosas de yabai las vuelve a poner
+    var onYabaiRestarted: (@MainActor () -> Void)?
     /// Si deberían estar añadidas (se pidió añadirlas y no falló)
     private var installed = false
     private var wasFailing = false
@@ -72,6 +74,7 @@ final class YabaiSignals {
                   settings.autoYabaiSignals else { return }
             Logger.yabai.info("Señales de yabai: faltan, se vuelven a añadir")
             run(add: true)
+            onYabaiRestarted?()
         }
     }
 
