@@ -18,6 +18,8 @@ cask "yabaibar" do
   depends_on macos: :sonoma
 
   app "YabaiBar.app"
+  # El ayudante de línea de comandos (los hooks de Claude Code usan la ruta de dentro de la app, no este enlace)
+  binary "#{appdir}/YabaiBar.app/Contents/Helpers/yb"
 
   uninstall quit: "com.jerickdev.yabaibar"
 

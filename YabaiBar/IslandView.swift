@@ -33,6 +33,22 @@ final class IslandModel {
     var sourceIcon: NSImage?
     var hoveredControl: IslandExpandedLayout.Control?
     var pressedControl: IslandExpandedLayout.Control?
+    /// La pestaña de la isla abierta que se ve
+    var selectedTab = IslandTab.desktops
+    /// Las novedades de cada pestaña: un punto en su píldora y su ícono en la isla cerrada
+    var tabBadges: [IslandTab: TabBadge] = [:]
+    /// Lo que mide el módulo Sistema; nil mientras la pestaña Desarrollador no está a la vista
+    var system: SystemSnapshot?
+    /// Las filas de los módulos Puertos y Docker, y la fila bajo el puntero (donde se ven sus botones)
+    var moduleContent: [ModuleID: ModuleRowsContent] = [:]
+    /// Lo que enseña el módulo Calendario
+    var calendar: CalendarSnapshot?
+    /// Lo que enseña el módulo Portapapeles
+    var clipboard: ClipboardSnapshot?
+    var hoveredRow: String?
+
+    /// Las filas de cada módulo, que es lo que necesitan los clics
+    var moduleRows: [ModuleID: [ModuleRow]] { moduleContent.mapValues(\.rows) }
 
     /// Se va a un escritorio desde su tarjeta con su atajo; la del activo solo cierra la isla
     func canSwitch(to space: SpaceSummary) -> Bool {
@@ -55,8 +71,11 @@ final class IslandModel {
     var peek: IslandPeek?
     /// Mantener despierto activado: la taza de la isla abierta se enciende
     var keepAwakeActive = false
-    /// El Pomodoro, si hay sesión; la franja solo se ve con la isla abierta y `expanded.hasPomodoro`
+    /// El Pomodoro, si está activado en Ajustes, con sesión o sin ella; su parte solo se ve en Utilidades, con la isla
+    /// abierta y `expanded.hasPomodoro`
     var pomodoro: PomodoroTimer?
+    /// Lo que dura un foco: la cuenta atrás del Pomodoro sin sesión, antes de empezar
+    var pomodoroFocusDuration: TimeInterval = 25 * 60
     /// Para el texto de la franja: los focos de cada ronda y el objetivo del día
     var pomodoroRounds = 4
     var pomodoroGoal = 8
@@ -109,19 +128,28 @@ struct IslandView: View {
             .opacity(model.layout.isCollapsed || model.wingsTucked ? 0 : 1)
             .scaleEffect(model.wingsTucked && !model.reduceMotion ? 0.85 : 1)
             if model.isExpanded {
-                cards.padding(.top, IslandExpandedLayout.gapBelowNotch)
-                if model.expanded.hasActivity {
-                    activityRow
-                        .padding(.top, IslandExpandedLayout.activityGap)
-                        .transition(.opacity)
-                }
+                // El contenido de cada pestaña se funde con el de la anterior; la isla cambia de tamaño a la vez
+                tabContent
+                    .padding(.top, IslandExpandedLayout.gapBelowNotch)
+                    .id(model.selectedTab)
+                    .transition(.opacity)
             }
         }
         .frame(width: model.islandWidth, height: model.islandHeight, alignment: .top)
-        .overlay(alignment: .topLeading) {
+        // Al cambiar de pestaña, el contenido que sale se desvanece mientras la isla se encoge: sin recorte se vería
+        // fuera de la silueta negra
+        .clipShape(
+            IslandShape(
+                topRadius: model.isExpanded ? Self.openTopRadius : Self.closedTopRadius,
+                bottomRadius: model.isExpanded ? Self.openBottomRadius : Self.closedBottomRadius
+            )
+        )
+        // Los botones se colocan desde el centro de la isla, como las alas: así no se mueven mientras la isla cambia de
+        // ancho al cambiar de pestaña
+        .overlay(alignment: .top) {
             if model.isExpanded {
+                tabPills
                 keepAwakeButton
-                pomodoroButton
                 settingsButton
             }
         }
@@ -140,7 +168,24 @@ struct IslandView: View {
         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .top)
     }
 
-    // Isla abierta: una tarjeta por espacio, que entran escalonadas. Al pasar de una tarjeta a otra vibra el trackpad
+    // El contenido de la pestaña elegida, debajo de la franja del notch, donde siempre se ven las alas
+    @ViewBuilder private var tabContent: some View {
+        switch model.selectedTab {
+        case .desktops: cards
+        case .utilities: utilities
+        case .developer: moduleGrid(model.expanded.developerGrid)
+        }
+    }
+
+    // Utilidades: la fila de la música y el Pomodoro, y debajo la de los módulos
+    private var utilities: some View {
+        VStack(spacing: IslandExpandedLayout.activityGap) {
+            activityRow
+            moduleGrid(model.expanded.utilityModules)
+        }
+    }
+
+    // Desktops: una tarjeta por espacio, que entran escalonadas. Al pasar de una tarjeta a otra vibra el trackpad
     private var cards: some View {
         HStack(spacing: IslandExpandedLayout.cardSpacing) {
             ForEach(model.expanded.spaces) { space in
@@ -232,8 +277,553 @@ struct IslandView: View {
             if let section = layout.pomodoroSection, let timer = model.pomodoro {
                 pomodoroPart(timer, in: section)
             }
+            if !layout.hasActivity {
+                Text("No suena nada ahora")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .frame(width: layout.mediaWidth, height: IslandExpandedLayout.activityHeight)
+            }
         }
         .frame(width: layout.mediaWidth, height: IslandExpandedLayout.activityHeight, alignment: .topLeading)
+    }
+
+    // MARK: - Los módulos
+
+    // Cada módulo es un recuadro con su título; hasta que se hagan, dicen "Próximamente". Los marcos salen de
+    // ModuleGridLayout, que se rehace con los módulos que haya
+    private func moduleGrid(_ grid: ModuleGridLayout) -> some View {
+        ZStack(alignment: .topLeading) {
+            ForEach(grid.cells, id: \.module) { cell in
+                moduleContent(cell.module)
+                    .frame(width: cell.frame.width, height: cell.frame.height)
+                    .offset(x: cell.frame.minX, y: cell.frame.minY)
+            }
+        }
+        .frame(width: model.expanded.mediaWidth, height: grid.size.height, alignment: .topLeading)
+    }
+
+    // Los módulos que ya existen dibujan lo suyo; los demás, el «Próximamente»
+    @ViewBuilder private func moduleContent(_ module: ModuleID) -> some View {
+        switch module {
+        case .system: systemModule
+        case .ports, .docker, .claude, .git, .notices: rowsModule(module)
+        case .calendar: calendarModule
+        case .clipboard: clipboardModule
+        default: modulePlaceholder(module)
+        }
+    }
+
+    private static let moduleShape = RoundedRectangle(cornerRadius: cardRadius, style: .continuous)
+
+    private func moduleHeader(_ module: ModuleID) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: module.symbol).font(.system(size: 11, weight: .semibold))
+            Text(module.title.uppercased()).font(.system(size: 10, weight: .semibold)).tracking(0.4)
+        }
+        .foregroundStyle(.white.opacity(0.6))
+        .frame(height: ModuleRowLayout.headerHeight)
+    }
+
+    private func modulePlaceholder(_ module: ModuleID) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            moduleHeader(module)
+            Spacer(minLength: 0)
+            Text("Próximamente")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.white.opacity(0.55))
+                .frame(maxWidth: .infinity)
+            Spacer(minLength: 0)
+        }
+        .lineLimit(1)
+        .padding(10)
+        .background(Self.moduleShape.fill(.white.opacity(0.06)))
+    }
+
+    // MARK: - Calendario
+
+    // El mes con las flechas, la tira de 7 días, y debajo hasta 2 eventos del día (o «Dar acceso» sin permiso). Los marcos salen de
+    // CalendarModuleLayout, que también resuelve los clics
+    private var calendarModule: some View {
+        let size = model.expanded.utilityModules.cells.first { $0.module == .calendar }?.frame.size ?? CGSize(width: 310, height: IslandExpandedLayout.moduleHeight)
+        let snapshot = model.calendar
+        let layout = CalendarModuleLayout.self
+        return ZStack(alignment: .topLeading) {
+            Text(snapshot?.month ?? "")
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(0.4)
+                .foregroundStyle(.white.opacity(0.6))
+                .frame(height: layout.headerHeight, alignment: .leading)
+                .offset(x: layout.padding, y: layout.padding)
+            calendarArrow("chevron.left", .previousWeek, frame: layout.previousFrame(in: size))
+            calendarArrow("chevron.right", .nextWeek, frame: layout.nextFrame(in: size))
+            ForEach(Array((snapshot?.days ?? []).enumerated()), id: \.element.id) { index, day in
+                let frame = layout.dayFrame(index, in: size)
+                calendarDay(day, index: index)
+                    .frame(width: frame.width, height: frame.height)
+                    .offset(x: frame.minX, y: frame.minY)
+            }
+            if let snapshot {
+                if snapshot.access == .granted {
+                    calendarEvents(snapshot, size: size)
+                } else {
+                    calendarAccessButton(snapshot.access)
+                        .frame(width: layout.accessSize.width, height: layout.accessSize.height)
+                        .offset(x: layout.accessFrame(in: size).minX, y: layout.accessFrame(in: size).minY)
+                }
+            }
+        }
+        .frame(width: size.width, height: size.height, alignment: .topLeading)
+        .background(Self.moduleShape.fill(.white.opacity(0.06)))
+    }
+
+    private func calendarArrow(_ symbol: String, _ control: CalendarControl, frame: CGRect) -> some View {
+        let hovered = model.hoveredControl == .calendar(control)
+        return Image(systemName: symbol)
+            .font(.system(size: 9, weight: .bold))
+            .foregroundStyle(.white.opacity(hovered ? 0.95 : 0.55))
+            .frame(width: frame.width, height: frame.height)
+            .scaleEffect(!model.reduceMotion && model.pressedControl == .calendar(control) ? 0.85 : 1)
+            .offset(x: frame.minX, y: frame.minY)
+    }
+
+    // La inicial del día sobre el número, hoy en azul con su nombre, los fines de semana en otro color y un punto bajo los días
+    // con eventos. El elegido lleva un círculo
+    private func calendarDay(_ day: CalendarDay, index: Int) -> some View {
+        let control = CalendarControl.day(index)
+        let hovered = model.hoveredControl == .calendar(control)
+        let blue = SpaceAccent.color(for: 1)
+        let labelColor: Color = day.isToday ? blue : day.isWeekend ? SpaceAccent.color(for: 3).opacity(0.85) : .white.opacity(0.45)
+        return VStack(spacing: 1) {
+            Text(day.label)
+                .font(.system(size: 9.5, weight: .semibold))
+                .foregroundStyle(labelColor)
+                .lineLimit(1)
+            ZStack {
+                Circle()
+                    .fill(day.isToday && day.isSelected ? blue : .white.opacity(day.isSelected ? 0.2 : hovered ? 0.1 : 0))
+                    .frame(width: 20, height: 20)
+                Text("\(day.number)")
+                    .font(.system(size: 12, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(day.isToday && day.isSelected ? .white : day.isToday ? blue : .white.opacity(day.isWeekend ? 0.7 : 0.9))
+            }
+            Circle()
+                .fill(.white.opacity(0.7))
+                .frame(width: 3.5, height: 3.5)
+                .opacity(day.hasEvents ? 1 : 0)
+        }
+        .scaleEffect(!model.reduceMotion && model.pressedControl == .calendar(control) ? 0.9 : 1)
+    }
+
+    // Hasta 2 eventos con la hora, el color de su calendario y el título; el que está en curso, resaltado. Sin ninguno, «Nada para
+    // hoy» y lo primero de mañana
+    @ViewBuilder private func calendarEvents(_ snapshot: CalendarSnapshot, size: CGSize) -> some View {
+        let layout = CalendarModuleLayout.self
+        if snapshot.items.isEmpty {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(snapshot.emptyTitle ?? "")
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.7))
+                if let next = snapshot.upNext {
+                    Text(next.event.isAllDay ? "Mañana · \(next.event.title)" : "Mañana \(next.timeText) · \(next.event.title)")
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .lineLimit(1)
+                }
+            }
+            .frame(width: size.width - 2 * layout.padding, alignment: .leading)
+            .padding(.leading, 6)
+            .offset(x: layout.padding, y: layout.eventsY + 2)
+        } else {
+            ForEach(Array(snapshot.items.enumerated()), id: \.element.id) { index, item in
+                let frame = layout.eventFrame(index, in: size)
+                calendarEvent(item, index: index)
+                    .frame(width: frame.width, height: frame.height, alignment: .leading)
+                    .offset(x: frame.minX, y: frame.minY)
+            }
+        }
+    }
+
+    private func calendarEvent(_ item: CalendarAgendaItem, index: Int) -> some View {
+        let color = item.event.color
+        let hovered = model.hoveredControl == .calendar(.event(index)) || model.hoveredControl == .calendar(.join(index))
+        return HStack(spacing: 6) {
+            Capsule()
+                .fill(Color(red: color.red, green: color.green, blue: color.blue))
+                .frame(width: 3, height: 14)
+            Text(item.timeText)
+                .font(.system(size: 10.5, weight: item.isInProgress ? .semibold : .medium))
+                .monospacedDigit()
+                .foregroundStyle(item.isInProgress ? SpaceAccent.color(for: 1) : .white.opacity(0.55))
+            Text(item.event.title)
+                .font(.system(size: 11.5, weight: item.isInProgress ? .semibold : .medium))
+                .foregroundStyle(.white.opacity(item.isInProgress ? 0.95 : 0.82))
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            if item.event.joinURL != nil {
+                Text("Unirse")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: CalendarModuleLayout.joinSize.width, height: CalendarModuleLayout.joinSize.height)
+                    .background(Capsule().fill(SpaceAccent.color(for: 1).opacity(model.hoveredControl == .calendar(.join(index)) ? 1 : 0.8)))
+                    .scaleEffect(!model.reduceMotion && model.pressedControl == .calendar(.join(index)) ? 0.92 : 1)
+                    .padding(.trailing, 2)
+            }
+        }
+        .padding(.leading, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(.white.opacity(item.isInProgress ? 0.12 : hovered ? 0.07 : 0))
+        )
+    }
+
+    private func calendarAccessButton(_ access: CalendarAccess) -> some View {
+        Text(access == .denied ? "Abrir Ajustes del Sistema" : "Dar acceso")
+            .font(.system(size: 10.5, weight: .semibold))
+            .foregroundStyle(.white)
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Capsule().fill(SpaceAccent.color(for: 1).opacity(model.hoveredControl == .calendar(.access) ? 1 : 0.8)))
+            .scaleEffect(!model.reduceMotion && model.pressedControl == .calendar(.access) ? 0.94 : 1)
+    }
+
+    // MARK: - Portapapeles
+
+    // La cabecera con sus tres botones (borrar, historial y herramientas) y debajo, según el modo, las 6 últimas copias o las 10
+    // herramientas con el cuentagotas y las muestras. Los marcos salen de ClipboardModuleLayout, que también resuelve los clics
+    private var clipboardModule: some View {
+        let size = model.expanded.utilityModules.cells.first { $0.module == .clipboard }?.frame.size ?? CGSize(width: 250, height: IslandExpandedLayout.moduleHeight)
+        let snapshot = model.clipboard
+        let layout = ClipboardModuleLayout.self
+        let mode = snapshot?.mode ?? .history
+        return ZStack(alignment: .topLeading) {
+            clipboardTitle(snapshot)
+                .frame(width: layout.clearFrame(in: size).minX - layout.padding - 4, height: layout.headerHeight, alignment: .leading)
+                .offset(x: layout.padding, y: layout.padding)
+            if mode == .history, snapshot?.state == .recording, !(snapshot?.rows.isEmpty ?? true) {
+                clipboardIcon("trash", .clear, frame: layout.clearFrame(in: size), active: false)
+            }
+            clipboardIcon("clock.arrow.circlepath", .mode(.history), frame: layout.historyModeFrame(in: size), active: mode == .history)
+            clipboardIcon("wrench.and.screwdriver", .mode(.tools), frame: layout.toolsModeFrame(in: size), active: mode == .tools)
+            if let snapshot {
+                switch mode {
+                case .history: clipboardHistory(snapshot, size: size)
+                case .tools: clipboardTools(snapshot, size: size)
+                }
+            }
+        }
+        .frame(width: size.width, height: size.height, alignment: .topLeading)
+        .background(Self.moduleShape.fill(.white.opacity(0.06)))
+    }
+
+    // El título del módulo, o lo que dice una herramienta al pasar el puntero, o su confirmación o error
+    @ViewBuilder private func clipboardTitle(_ snapshot: ClipboardSnapshot?) -> some View {
+        if let message = snapshot?.message {
+            Text(message.text)
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(message.isError ? SpaceAccent.color(for: 3) : SpaceAccent.color(for: 2))
+                .lineLimit(1)
+        } else if case .clipboard(.tool(let tool)) = model.hoveredControl {
+            Text(tool.title)
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.85))
+                .lineLimit(1)
+        } else {
+            moduleHeader(.clipboard)
+        }
+    }
+
+    private func clipboardIcon(_ symbol: String, _ control: ClipboardControl, frame: CGRect, active: Bool) -> some View {
+        let hovered = model.hoveredControl == .clipboard(control)
+        return Image(systemName: symbol)
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(.white.opacity(active ? 0.95 : hovered ? 0.85 : 0.45))
+            .frame(width: frame.width, height: frame.height)
+            .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(.white.opacity(active ? 0.14 : 0)))
+            .scaleEffect(!model.reduceMotion && model.pressedControl == .clipboard(control) ? 0.88 : 1)
+            .offset(x: frame.minX, y: frame.minY)
+    }
+
+    @ViewBuilder private func clipboardHistory(_ snapshot: ClipboardSnapshot, size: CGSize) -> some View {
+        let layout = ClipboardModuleLayout.self
+        if snapshot.state == .recording {
+            if snapshot.rows.isEmpty {
+                Text("Lo que copies saldrá aquí")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .frame(width: size.width, height: 60)
+                    .offset(y: layout.bodyY)
+            } else {
+                ForEach(Array(snapshot.rows.enumerated()), id: \.element.id) { index, row in
+                    let frame = layout.entryFrame(index, in: size)
+                    let hovered = model.hoveredControl == .clipboard(.entry(index))
+                    Text(row.preview)
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.82))
+                        .lineLimit(1)
+                        .padding(.horizontal, 6)
+                        .frame(width: frame.width, height: frame.height, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(.white.opacity(hovered ? 0.16 : 0.07)))
+                        .scaleEffect(!model.reduceMotion && model.pressedControl == .clipboard(.entry(index)) ? 0.96 : 1)
+                        .offset(x: frame.minX, y: frame.minY)
+                }
+            }
+        } else {
+            let (text, button): (String, String) = switch snapshot.state {
+            case .off, .recording: ("El historial está apagado", "Activar el historial")
+            case .needsFirstAccess: ("macOS te preguntará si lo permites", "Dar acceso")
+            case .needsAllow: ("Elige «Permitir» para YabaiBar", "Abrir Ajustes del Sistema")
+            case .denied: ("Acceso denegado en macOS", "Abrir Ajustes del Sistema")
+            }
+            Text(text)
+                .font(.system(size: 10.5, weight: .medium))
+                .foregroundStyle(.white.opacity(0.6))
+                .frame(width: size.width, alignment: .center)
+                .offset(y: layout.bodyY + 8)
+            Text(button)
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .frame(width: layout.accessSize.width, height: layout.accessSize.height)
+                .background(Capsule().fill(SpaceAccent.color(for: 1).opacity(model.hoveredControl == .clipboard(.access) ? 1 : 0.8)))
+                .scaleEffect(!model.reduceMotion && model.pressedControl == .clipboard(.access) ? 0.94 : 1)
+                .offset(x: layout.accessFrame(in: size).minX, y: layout.accessFrame(in: size).minY)
+        }
+    }
+
+    @ViewBuilder private func clipboardTools(_ snapshot: ClipboardSnapshot, size: CGSize) -> some View {
+        let layout = ClipboardModuleLayout.self
+        ForEach(Array(DevTool.allCases.enumerated()), id: \.element) { index, tool in
+            let frame = layout.toolFrame(index, in: size)
+            let hovered = model.hoveredControl == .clipboard(.tool(tool))
+            Text(tool.label)
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.white.opacity(hovered ? 1 : 0.8))
+                .frame(width: frame.width, height: frame.height)
+                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(.white.opacity(hovered ? 0.18 : 0.08)))
+                .scaleEffect(!model.reduceMotion && model.pressedControl == .clipboard(.tool(tool)) ? 0.92 : 1)
+                .offset(x: frame.minX, y: frame.minY)
+        }
+        let picker = layout.pickerFrame(in: size)
+        Image(systemName: "eyedropper")
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.white.opacity(model.hoveredControl == .clipboard(.picker) ? 1 : 0.8))
+            .frame(width: picker.width, height: picker.height)
+            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(SpaceAccent.color(for: 1).opacity(model.hoveredControl == .clipboard(.picker) ? 0.6 : 0.35)))
+            .scaleEffect(!model.reduceMotion && model.pressedControl == .clipboard(.picker) ? 0.92 : 1)
+            .offset(x: picker.minX, y: picker.minY)
+        ForEach(Array(snapshot.colors.enumerated()), id: \.element) { index, hex in
+            let frame = layout.swatchFrame(index, in: size)
+            let color = ColorHex.color(hex) ?? RGBColor(red: 0.5, green: 0.5, blue: 0.5)
+            Circle()
+                .fill(Color(red: color.red, green: color.green, blue: color.blue))
+                .overlay(Circle().stroke(.white.opacity(model.hoveredControl == .clipboard(.swatch(index)) ? 0.9 : 0.35), lineWidth: 1))
+                .frame(width: frame.width, height: frame.height)
+                .scaleEffect(!model.reduceMotion && model.pressedControl == .clipboard(.swatch(index)) ? 0.85 : 1)
+                .offset(x: frame.minX, y: frame.minY)
+        }
+    }
+
+    // MARK: - Puertos y Docker
+
+    // La cabecera con su resumen («3 abiertos») y hasta 3 filas de 22 pt, o un aviso si no hay nada que enseñar. Los
+    // marcos de las filas y de sus botones salen de ModuleRowLayout, que también resuelve los clics
+    private func rowsModule(_ module: ModuleID) -> some View {
+        let content = model.moduleContent[module]
+        let width = model.expanded.developerGrid.cells.first { $0.module == module }?.frame.width ?? 0
+        let size = CGSize(width: width, height: IslandExpandedLayout.moduleHeight)
+        return ZStack(alignment: .topLeading) {
+            HStack {
+                moduleHeader(module)
+                Spacer(minLength: 4)
+                Text(content?.summary ?? "")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.6))
+            }
+            .frame(width: size.width - 2 * ModuleRowLayout.padding, height: ModuleRowLayout.headerHeight)
+            .offset(x: ModuleRowLayout.padding, y: ModuleRowLayout.padding)
+            if let notice = content?.notice {
+                VStack(spacing: 3) {
+                    Text(notice.title).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(.white.opacity(0.85))
+                    if let subtitle = notice.subtitle {
+                        Text(subtitle).font(.system(size: 10.5)).foregroundStyle(.white.opacity(0.66))
+                    }
+                }
+                .multilineTextAlignment(.center)
+                .frame(width: size.width - 2 * ModuleRowLayout.padding, height: ModuleRowLayout.rowsHeight)
+                .offset(x: ModuleRowLayout.padding, y: ModuleRowLayout.padding + ModuleRowLayout.headerHeight + ModuleRowLayout.headerGap)
+            }
+            ForEach(Array((content?.rows ?? []).enumerated()), id: \.element.id) { index, row in
+                let frame = ModuleRowLayout.rowFrame(index, in: size)
+                moduleRow(row, in: module, frame: frame)
+                    .offset(x: frame.minX, y: frame.minY)
+            }
+        }
+        .frame(width: size.width, height: size.height, alignment: .topLeading)
+        .background(Self.moduleShape.fill(.white.opacity(0.06)))
+    }
+
+    private func moduleRow(_ row: ModuleRow, in module: ModuleID, frame: CGRect) -> some View {
+        let hovered = model.hoveredRow == row.id
+        let showsButtons = (hovered || row.showsActionsAlways) && !row.actions.isEmpty
+        // Con los botones a la vista, el texto se queda con lo que ellos dejan libre: sin el detalle, que no cabría
+        let buttonsWidth = ModuleRowLayout.buttonsWidth(count: row.actions.count) + ModuleRowLayout.buttonInset
+        return HStack(spacing: 6) {
+            switch row.leading {
+            case .none: EmptyView()
+            case .code(let text):
+                Text(text)
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(row.isDimmed ? .white.opacity(0.62) : SpaceAccent.color(for: 1))
+                    .frame(width: 44, alignment: .leading)
+            case .status(let isOn):
+                Circle().fill(isOn ? SpaceAccent.color(for: 2) : .white.opacity(0.4)).frame(width: 6, height: 6)
+            case .dot(let tone):
+                Circle().fill(Self.toneColor(tone)).frame(width: 6, height: 6)
+            }
+            Text(row.title)
+                .font(.system(size: 11, weight: row.leading == .none ? .medium : .semibold))
+                .foregroundStyle(.white.opacity(row.isDimmed ? 0.62 : 0.9))
+                .lineLimit(1)
+            if !showsButtons {
+                Text(row.detail)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.white.opacity(0.66))
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            if !showsButtons, !row.trailing.isEmpty {
+                Text(row.trailing)
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundStyle(Self.toneColor(row.tone))
+                    .lineLimit(1)
+                    .padding(.trailing, 6)
+            }
+        }
+        .padding(.leading, 6)
+        .padding(.trailing, showsButtons ? buttonsWidth + 4 : 0)
+        .frame(width: frame.width, height: frame.height, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(.white.opacity(hovered ? 0.1 : 0)))
+        .overlay(alignment: .trailing) {
+            if showsButtons {
+                HStack(spacing: ModuleRowLayout.buttonSpacing) {
+                    ForEach(row.actions, id: \.self) { action in
+                        rowButton(ModuleControl(module: module, row: row.id, action: action))
+                    }
+                }
+                .padding(.trailing, ModuleRowLayout.buttonInset)
+            }
+        }
+    }
+
+    private static func noticeColor(_ tone: IslandNotice.Tone) -> Color {
+        switch tone {
+        case .info: SpaceAccent.color(for: 1)
+        case .ok: SpaceAccent.color(for: 2)
+        case .warning: SpaceAccent.color(for: 3)
+        case .error: SpaceAccent.color(for: 10)
+        }
+    }
+
+    // Azul si algo está en marcha, naranja si espera algo de ti, verde si va bien, rojo si salió mal
+    private static func toneColor(_ tone: RowTone) -> Color {
+        switch tone {
+        case .neutral: .white.opacity(0.4)
+        case .active: SpaceAccent.color(for: 1)
+        case .attention: SpaceAccent.color(for: 3)
+        case .ok: SpaceAccent.color(for: 2)
+        case .alert: SpaceAccent.color(for: 10)
+        }
+    }
+
+    private func rowButton(_ control: ModuleControl) -> some View {
+        let hovered = model.hoveredControl == .module(control)
+        let pressed = model.pressedControl == .module(control)
+        return Image(systemName: control.action.symbol)
+            .font(.system(size: 10.5, weight: .semibold))
+            .foregroundStyle(control.action.isDestructive ? SpaceAccent.color(for: 10) : .white.opacity(0.85))
+            .frame(width: ModuleRowLayout.buttonSize, height: ModuleRowLayout.buttonSize)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(control.action.isDestructive ? SpaceAccent.color(for: 10).opacity(hovered ? 0.35 : 0.2) : .white.opacity(hovered ? 0.2 : 0.1))
+            )
+            .scaleEffect(!model.reduceMotion && pressed ? 0.88 : 1)
+    }
+
+    // MARK: - Sistema
+
+    // La CPU y la memoria en dos barras y, debajo, los tres procesos que más CPU usan. Mide 14 + 6 + 22 + 6 + 3 × 14 = 90
+    // de los 92 pt que deja el recuadro. Hasta la primera medida, rayas
+    private var systemModule: some View {
+        let snapshot = model.system
+        let processes = snapshot?.processes ?? []
+        return VStack(alignment: .leading, spacing: 6) {
+            moduleHeader(.system)
+            HStack(spacing: 12) {
+                meter(
+                    "CPU", value: snapshot?.cpu.map(SystemFormat.percent) ?? "—", fraction: (snapshot?.cpu ?? 0) / 100,
+                    color: SpaceAccent.color(for: 1)
+                )
+                meter(
+                    "RAM", value: snapshot.map { SystemFormat.memory($0.memory) } ?? "—",
+                    fraction: snapshot?.memory.usedFraction ?? 0, color: Self.pressureColor(snapshot?.memory.pressure ?? .normal)
+                )
+            }
+            VStack(spacing: 0) {
+                ForEach(processes) { process in
+                    HStack(spacing: 6) {
+                        Text(process.name)
+                            .lineLimit(1)
+                            .foregroundStyle(.white.opacity(0.85))
+                        Spacer(minLength: 4)
+                        Text(SystemFormat.percent(process.cpu))
+                            .monospacedDigit()
+                            .foregroundStyle(.white.opacity(0.66))
+                    }
+                    .font(.system(size: 10.5))
+                    .frame(height: 14)
+                }
+            }
+            .frame(height: 42, alignment: .top)
+        }
+        .padding(10)
+        .background(Self.moduleShape.fill(.white.opacity(0.06)))
+    }
+
+    // Un nombre, su valor y una barra fina
+    private func meter(_ title: String, value: String, fraction: Double, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Text(title).foregroundStyle(.white.opacity(0.66))
+                Spacer(minLength: 0)
+                Text(value)
+                    .fontWeight(.semibold)
+                    .monospacedDigit()
+                    .foregroundStyle(.white)
+                    .minimumScaleFactor(0.8)
+            }
+            .font(.system(size: 10.5))
+            .lineLimit(1)
+            .frame(height: 14)
+            Capsule()
+                .fill(.white.opacity(0.15))
+                .frame(height: 4)
+                .overlay(alignment: .leading) {
+                    GeometryReader { proxy in
+                        Capsule().fill(color).frame(width: proxy.size.width * min(1, max(0, fraction)))
+                    }
+                }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // La barra de la memoria cambia de color con la presión que da macOS: verde, naranja y rojo
+    private static func pressureColor(_ pressure: MemoryPressure) -> Color {
+        switch pressure {
+        case .normal: SpaceAccent.color(for: 2)
+        case .warning: SpaceAccent.color(for: 3)
+        case .critical: SpaceAccent.color(for: 10)
+        }
     }
 
     // La carátula grande con el ícono de la app en la esquina; el título, el álbum y el artista; los botones y el
@@ -389,6 +979,16 @@ struct IslandView: View {
                 Image(systemName: "keyboard")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
+            } else if case let .claude(peek) = model.peek {
+                // Claude pregunta, en naranja, o terminó, en verde
+                Image(systemName: peek.kind == .asks ? "sparkles" : "checkmark.circle.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(peek.kind == .asks ? SpaceAccent.color(for: 3) : SpaceAccent.color(for: 2))
+            } else if case let .notice(notice) = model.peek {
+                // Un aviso de Git (o de la terminal): su ícono, en el color de su tono
+                Image(systemName: notice.symbol)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Self.noticeColor(notice.tone))
             } else if let fallbackText = model.fallbackText {
                 Text(fallbackText)
                     .font(.system(size: 13, weight: .semibold))
@@ -432,6 +1032,10 @@ struct IslandView: View {
                 peekText(peek.title, peek.subtitle)
             } else if case let .shortcuts(title, subtitle) = model.peek {
                 peekText(title, subtitle)
+            } else if case let .claude(peek) = model.peek {
+                peekText(peek.title, peek.subtitle)
+            } else if case let .notice(notice) = model.peek {
+                peekText(notice.title, notice.subtitle)
             } else if model.peek == .track, let nowPlaying = model.nowPlaying {
                 // Aviso de canción nueva: el título y el artista
                 peekText(nowPlaying.title, nowPlaying.artist)
@@ -467,7 +1071,33 @@ struct IslandView: View {
             Image(systemName: "cup.and.saucer.fill")
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.yellow.opacity(0.9))
+        case .utilities: tabIndicator(.utilities)
+        case .developer: tabIndicator(.developer)
         case .pomodoro: pomodoroRing
+        }
+    }
+
+    // El ícono de una pestaña con novedades, con su punto de color
+    private func tabIndicator(_ tab: IslandTab) -> some View {
+        Image(systemName: tab.symbol)
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(.white)
+            .overlay(alignment: .topTrailing) {
+                if let badge = model.tabBadges[tab] {
+                    Circle()
+                        .fill(Self.badgeColor(badge))
+                        .frame(width: 6, height: 6)
+                        .overlay(Circle().stroke(.black, lineWidth: 1))
+                        .offset(x: 3, y: -3)
+                }
+            }
+    }
+
+    static func badgeColor(_ badge: TabBadge) -> Color {
+        switch badge {
+        case .info: Color(red: 0.30, green: 0.62, blue: 1)
+        case .attention: Color(red: 1, green: 0.72, blue: 0.42)
+        case .alert: Color(red: 1, green: 0.54, blue: 0.50)
         }
     }
 
@@ -506,8 +1136,44 @@ struct IslandView: View {
 
     // MARK: - Actividades
 
-    // La taza de la isla abierta, arriba a la derecha, en la franja del notch. Los clics los resuelve
-    // IslandController con IslandExpandedLayout.control, como los de la música
+    // Lo que hay que mover un botón desde el centro de la isla (arriba y centrada) hasta su marco
+    private func cornerOffset(_ frame: CGRect) -> CGFloat {
+        frame.midX - model.islandWidth / 2
+    }
+
+    // Las píldoras de las pestañas, a la izquierda de las alas, en la franja del notch: solo el ícono, la elegida con fondo.
+    // Los clics los resuelve IslandController con IslandExpandedLayout.control, como los de la música
+    @ViewBuilder private var tabPills: some View {
+        let frames = model.expanded.tabFrames(islandWidth: model.islandWidth, topHeight: model.height)
+        ForEach(frames.indices, id: \.self) { index in
+            tabPill(frames[index].tab, frame: frames[index].frame)
+        }
+    }
+
+    private func tabPill(_ tab: IslandTab, frame: CGRect) -> some View {
+        let selected = model.selectedTab == tab
+        let hovered = model.hoveredControl == .tab(tab)
+        return Image(systemName: tab.symbol)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(.white.opacity(selected ? 1 : hovered ? 0.9 : 0.62))
+            .frame(width: frame.width, height: frame.height)
+            .background(Circle().fill(.white.opacity(selected ? 0.2 : hovered ? 0.14 : 0)))
+            .overlay(alignment: .topTrailing) {
+                if let badge = model.tabBadges[tab] {
+                    Circle()
+                        .fill(Self.badgeColor(badge))
+                        .frame(width: 8, height: 8)
+                        .overlay(Circle().stroke(.black, lineWidth: 1.5))
+                        .padding(2)
+                }
+            }
+            .scaleEffect(!model.reduceMotion && model.pressedControl == .tab(tab) ? 0.88 : 1)
+            .offset(x: cornerOffset(frame), y: frame.minY)
+            .transition(.opacity)
+    }
+
+    // La taza de la isla abierta, arriba a la derecha junto al engranaje. Los clics los resuelve IslandController
+    // con IslandExpandedLayout.control
     @ViewBuilder private var keepAwakeButton: some View {
         if let frame = model.expanded.keepAwakeFrame(islandWidth: model.islandWidth, topHeight: model.height) {
             let hovered = model.hoveredControl == .keepAwake
@@ -517,7 +1183,7 @@ struct IslandView: View {
                 .frame(width: frame.width, height: frame.height)
                 .background(Circle().fill(.white.opacity(hovered ? 0.14 : 0)))
                 .scaleEffect(!model.reduceMotion && model.pressedControl == .keepAwake ? 0.88 : 1)
-                .offset(x: frame.minX, y: frame.minY)
+                .offset(x: cornerOffset(frame), y: frame.minY)
                 .transition(.opacity)
         }
     }
@@ -532,7 +1198,7 @@ struct IslandView: View {
                 .frame(width: frame.width, height: frame.height)
                 .background(Circle().fill(.white.opacity(hovered ? 0.14 : 0)))
                 .scaleEffect(!model.reduceMotion && model.pressedControl == .settings ? 0.88 : 1)
-                .offset(x: frame.minX, y: frame.minY)
+                .offset(x: cornerOffset(frame), y: frame.minY)
                 .transition(.opacity)
         }
     }
@@ -542,22 +1208,6 @@ struct IslandView: View {
     static let focusColor = Color(red: 1, green: 0.42, blue: 0.33)
     static let breakColor = Color(red: 0.49, green: 0.91, blue: 0.53)
 
-    // El botón del Pomodoro, arriba a la izquierda: gris si está parado o en pausa, del color de la fase si corre
-    @ViewBuilder private var pomodoroButton: some View {
-        if let frame = model.expanded.pomodoroButtonFrame(islandWidth: model.islandWidth, topHeight: model.height) {
-            let hovered = model.hoveredControl == .pomodoroToggle
-            let timer = model.pomodoro
-            Image(systemName: "timer")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(timer?.isRunning == true ? Self.phaseColor(timer?.phase ?? .focus) : .white.opacity(hovered ? 0.9 : 0.55))
-                .frame(width: frame.width, height: frame.height)
-                .background(Circle().fill(.white.opacity(hovered ? 0.14 : 0)))
-                .scaleEffect(!model.reduceMotion && model.pressedControl == .pomodoroToggle ? 0.88 : 1)
-                .offset(x: frame.minX, y: frame.minY)
-                .transition(.opacity)
-        }
-    }
-
     // El anillo con lo que queda de la fase y, al lado, la fase, la ronda y los de hoy, con ⏯ ⏭ ⏹. El anillo lo anima
     // Core Animation (PomodoroRing); la cuenta atrás se redibuja cada segundo solo mientras corre y la isla está
     // abierta
@@ -565,7 +1215,7 @@ struct IslandView: View {
         let layout = model.expanded
         let ring = IslandExpandedLayout.coverFrame(in: section)
         let textX = IslandExpandedLayout.textX(in: section)
-        let controls = layout.controlFrames(IslandExpandedLayout.pomodoroControls, in: section)
+        let controls = layout.controlFrames(layout.pomodoroControlList, in: section)
         let shared = layout.sharesActivityRow
         let textEnd = shared ? section.maxX : (controls.first?.frame.minX ?? section.maxX) - 16
         let color = Self.phaseColor(timer.phase)
@@ -582,7 +1232,7 @@ struct IslandView: View {
                         animated: !model.reduceMotion
                     )
                     VStack(spacing: 1) {
-                        Text(Self.countdown(timer.state == .ready ? timer.phaseDuration : timer.remaining(at: context.date)))
+                        Text(Self.countdown(countdownValue(timer, at: context.date)))
                             .font(.system(size: 17, weight: .semibold))
                             .monospacedDigit()
                             .foregroundStyle(timer.isRunning ? .white : .white.opacity(0.6))
@@ -621,6 +1271,16 @@ struct IslandView: View {
         }
     }
 
+    // Lo que se ve dentro del anillo: lo que queda de la fase; con la fase lista, lo que dura, y sin sesión, lo que
+    // durará el primer foco
+    private func countdownValue(_ timer: PomodoroTimer, at date: Date) -> TimeInterval {
+        switch timer.state {
+        case .stopped: model.pomodoroFocusDuration
+        case .ready: timer.phaseDuration
+        case .running, .paused: timer.remaining(at: date)
+        }
+    }
+
     private static func pomodoroSymbol(_ control: IslandExpandedLayout.Control, running: Bool) -> String {
         switch control {
         case .pomodoroSkip: "forward.end.fill"
@@ -632,7 +1292,7 @@ struct IslandView: View {
     // Debajo de la cuenta atrás: cuánto dura la fase, o si está en pausa o lista para empezar
     private static func ringCaption(_ timer: PomodoroTimer) -> String {
         switch timer.state {
-        case .ready: "lista"
+        case .stopped, .ready: "lista"
         case .paused: "en pausa"
         default: "de \(Int((timer.phaseDuration / 60).rounded())) min"
         }

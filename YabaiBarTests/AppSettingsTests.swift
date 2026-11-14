@@ -34,6 +34,13 @@ struct AppSettingsTests {
             #expect(settings.pomodoroWarning == 30)
             #expect(settings.pomodoroDailyGoal == 8)
             #expect(settings.showPomodoroRing)
+            #expect(settings.showDocker)
+            #expect(!settings.claudeNotifyFinished)
+            #expect(settings.showGit && settings.gitUseGitHub)
+            #expect(settings.gitFolders.isEmpty)
+            #expect(settings.gitNoticeSettings == GitNoticeSettings())
+            #expect(settings.gitUnpushedMinutes == 30)
+            #expect(settings.terminalNotices && settings.terminalMinSeconds == 10 && !settings.terminalWhenFrontmost)
             #expect(settings.pomodoroSound)
             #expect(settings.pomodoroDuckMusic)
             #expect(settings.pomodoroDuckLevel == 35)
@@ -59,6 +66,19 @@ struct AppSettingsTests {
             settings.keepAwakeButton = false
             settings.pomodoroPreset = .long
             settings.pomodoroWarning = 60
+            settings.showDocker = false
+            settings.claudeNotifyFinished = true
+            settings.showGit = false
+            settings.gitUseGitHub = false
+            settings.gitFolders = ["/Users/u/uno", "/Users/u/dos"]
+            settings.gitNoticeUnpushed = false
+            settings.gitUnpushedMinutes = 60
+            settings.gitNoticeUncommitted = false
+            settings.gitNoticeUnreleased = false
+            settings.gitNoticeCI = false
+            settings.terminalNotices = false
+            settings.terminalMinSeconds = 60
+            settings.terminalWhenFrontmost = true
 
             let reloaded = AppSettings(defaults: defaults)
             #expect(reloaded.switchSpeed == .fast)
@@ -75,6 +95,25 @@ struct AppSettingsTests {
             #expect(reloaded.pomodoroPreset == .long)
             #expect(reloaded.pomodoroDurations.focus == 50 * 60)
             #expect(reloaded.pomodoroWarning == 60)
+            #expect(!reloaded.showDocker)
+            #expect(reloaded.claudeNotifyFinished)
+            #expect(!reloaded.showGit && !reloaded.gitUseGitHub)
+            #expect(reloaded.gitFolders == ["/Users/u/uno", "/Users/u/dos"])
+            #expect(!reloaded.terminalNotices && reloaded.terminalMinSeconds == 60 && reloaded.terminalWhenFrontmost)
+            #expect(
+                reloaded.gitNoticeSettings
+                    == GitNoticeSettings(unpushed: false, unpushedAfter: 3600, uncommitted: false, unreleased: false, ci: false)
+            )
+        }
+    }
+
+    // Un valor fuera de las opciones vuelve al de siempre
+    @Test func anUnknownUnpushedDelayGoesBackToThirtyMinutes() {
+        withDefaults { defaults in
+            defaults.set(7, forKey: "gitUnpushedMinutes")
+            defaults.set(7, forKey: "terminalMinSeconds")
+            #expect(AppSettings(defaults: defaults).gitUnpushedMinutes == 30)
+            #expect(AppSettings(defaults: defaults).terminalMinSeconds == 10)
         }
     }
 

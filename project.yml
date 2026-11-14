@@ -31,6 +31,14 @@ targets:
       - target: MediaRemoteAdapter
         link: false
         embed: true
+      # El ayudante de línea de comandos, dentro de la app: Contents/Helpers/yb, firmado con ella
+      - target: yb
+        link: false
+        embed: true
+        codeSign: true
+        copy:
+          destination: wrapper
+          subpath: Contents/Helpers
     info:
       path: YabaiBar/Info.plist
       properties:
@@ -39,6 +47,9 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSUIElement: true
         LSApplicationCategoryType: public.app-category.utilities
+        # El calendario de la pestaña Utilidades (fase 42): solo lee los eventos y solo pide el permiso cuando el usuario pulsa «Dar acceso»
+        NSCalendarsFullAccessUsageDescription: YabaiBar lee tus eventos de Calendario para enseñarte los de hoy en la isla y avisarte 5 minutos antes de cada uno. No los guarda ni los manda a ningún sitio.
+        NSCalendarsUsageDescription: YabaiBar lee tus eventos de Calendario para enseñarte los de hoy en la isla y avisarte 5 minutos antes de cada uno. No los guarda ni los manda a ningún sitio.
         CFBundleURLTypes:
           - CFBundleURLName: com.jerickdev.yabaibar
             CFBundleURLSchemes:
@@ -54,6 +65,21 @@ targets:
     scheme:
       testTargets:
         - YabaiBarTests
+
+  # `yb`: lo ejecutan los hooks de Claude Code (fase 39 de docs/PLAN-8.md) y los de zsh (fase 41). Comparte con la app el código de los avisos
+  yb:
+    type: tool
+    platform: macOS
+    sources:
+      - path: YabaiBarCLI
+      - path: YabaiBar/ClaudeHook.swift
+      - path: YabaiBar/TerminalNotice.swift
+    settings:
+      base:
+        PRODUCT_NAME: yb
+        PRODUCT_BUNDLE_IDENTIFIER: com.jerickdev.yabaibar.yb
+        SKIP_INSTALL: YES
+        ENABLE_APP_SANDBOX: NO
 
   # mediaremote-adapter (BSD-3-Clause), sin cambios: lee y controla el "Ahora suena" de macOS desde /usr/bin/perl.
   # Mismas opciones que su CMakeLists.txt: ARC y símbolos visibles, para que el script de Perl encuentre las funciones

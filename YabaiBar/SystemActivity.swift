@@ -30,6 +30,20 @@ struct BatteryEventDetector {
     }
 }
 
+/// Un aviso genérico de la isla cerrada: un símbolo, un título y un detalle. Lo usan Git (fase 40) y, después, la terminal
+struct IslandNotice: Equatable, Sendable {
+    enum Tone: Equatable, Sendable { case info, ok, warning, error }
+
+    var symbol: String
+    var tone: Tone
+    var title: String
+    var subtitle: String
+    /// Un error se ve más tiempo
+    var isUrgent = false
+    /// Más importante, más arriba (ver `IslandPeek.priority`)
+    var priority = 20
+}
+
 /// Lo que enseña la isla cerrada unos segundos en lugar de los espacios
 enum IslandPeek: Equatable {
     /// Canción nueva: la carátula y el título
@@ -40,11 +54,17 @@ enum IslandPeek: Equatable {
     case pomodoro(PomodoroPeek)
     /// Atajos de escritorio añadidos: «Escritorio 5 · Atajo ⌥5»
     case shortcuts(title: String, subtitle: String)
+    /// Una sesión de Claude Code pregunta o terminó
+    case claude(ClaudePeek)
+    /// Un aviso de Git (o de la terminal): ícono, título y detalle
+    case notice(IslandNotice)
 
     /// Cuánto se ve
     var duration: Duration {
         switch self {
         case .track, .shortcuts: .seconds(3)
+        case .claude(let peek): peek.kind == .asks ? .seconds(8) : .seconds(5)
+        case .notice(let notice): notice.isUrgent ? .seconds(8) : .seconds(5)
         case .battery(.low, _), .battery(.critical, _): .seconds(5)
         case .battery: .seconds(3)
         case .pomodoro(let peek):
@@ -58,7 +78,7 @@ enum IslandPeek: Equatable {
     /// Las alas se abren al máximo para que quepa un título
     var widensWings: Bool {
         switch self {
-        case .track, .pomodoro, .shortcuts: true
+        case .track, .pomodoro, .shortcuts, .claude, .notice: true
         case .battery: false
         }
     }
@@ -70,16 +90,23 @@ enum IslandPeek: Equatable {
         case .battery(let event, let level): "batería \(event) al \(level) %"
         case .pomodoro(let peek): "\(peek.title) · \(peek.subtitle)"
         case .shortcuts(let title, let subtitle): "\(title) · \(subtitle)"
+        // Sin la carpeta ni el mensaje: son del usuario
+        case .claude(let peek): peek.kind == .asks ? "Claude pregunta" : "Claude terminó"
+        // Solo el ícono: el título y el detalle llevan nombres de repositorios y de etiquetas
+        case .notice(let notice): "aviso «\(notice.symbol)»"
         }
     }
 
-    /// Un aviso no sustituye a otro que se está viendo si es menos importante: el Pomodoro va antes que la
-    /// batería, y la batería antes que la canción
+    /// Un aviso no sustituye a otro que se está viendo si es menos importante: una pregunta de Claude va antes que todo (hay
+    /// algo parado esperándote), después el Pomodoro, los avisos de Git y de la terminal (y, más adelante, el calendario, entre
+    /// ellos y el Pomodoro), la batería y la canción. Con huecos, para ir metiendo los que faltan
     var priority: Int {
         switch self {
         case .track: 0
-        case .battery, .shortcuts: 1
-        case .pomodoro: 2
+        case .battery, .shortcuts: 10
+        case .notice(let notice): notice.priority
+        case .pomodoro: 40
+        case .claude(let peek): peek.kind == .asks ? 50 : 10
         }
     }
 }

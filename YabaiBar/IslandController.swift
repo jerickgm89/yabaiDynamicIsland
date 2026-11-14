@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import Observation
 import SwiftUI
 import os
@@ -34,6 +35,14 @@ final class IslandController {
     static let pointerCheckInterval: Duration = .milliseconds(120)
     /// Las tarjetas se iluminan bajo el puntero y se hunden al pulsarlas
     static let cardAnimation = Animation.smooth(duration: 0.2)
+    /// Al cambiar de pestaña la isla crece o se encoge y el contenido se funde
+    static let tabAnimation = Animation.spring(response: 0.4, dampingFraction: 0.95)
+    /// Las teclas de cambiar de pestaña con la isla abierta con el atajo o el gesto, como en vim: h a la izquierda y
+    /// l a la derecha
+    static let vimTabKeys: [(keyCode: Int, step: IslandTab.Step)] = [(kVK_ANSI_H, .previous), (kVK_ANSI_L, .next)]
+    /// Tras cambiar de pestaña con el teclado, la isla puede encogerse y dejar el puntero fuera: no se cierra por eso
+    /// hasta pasado este tiempo
+    static let tabResizeGrace: Duration = .seconds(2)
     /// Al elegir un escritorio la isla se recoge entera en el notch; el atajo se pulsa cuando ya casi lo ha hecho,
     /// para que el encogimiento se vea antes de que macOS empiece a deslizar
     static let switchDelay: Duration = .milliseconds(200)
@@ -46,8 +55,8 @@ final class IslandController {
 
     private enum Expansion { case closed, peek, open }
 
-    /// Alto del lienzo de la isla: cabe la isla abierta con su sombra, con la fila de la música y el Pomodoro
-    static let canvasHeight: CGFloat = 270
+    /// Alto del lienzo de la isla: cabe la pestaña más alta (Desarrollador, de 294 pt con el notch del 16") con su sombra
+    static let canvasHeight: CGFloat = 320
 
     private let panel = IslandPanel(contentRect: .zero)
     private let container = IslandContainerView()
@@ -60,6 +69,9 @@ final class IslandController {
     private let media: NowPlayingStore
     private let keepAwake: KeepAwake
     private let pomodoro: PomodoroStore
+    private let tools: DevTools
+    private let calendar: CalendarStore
+    private let clipboard: ClipboardStore
     private var geometry: NotchGeometry?
     private var screenWidth: CGFloat = 0
     // Copias de lo dibujado. No se leen del modelo dentro de render(): withObservationTracking
@@ -69,8 +81,18 @@ final class IslandController {
     private var currentFailed = false
     /// Hay música: la isla abierta tiene la franja "Ahora suena" y la cerrada, las barras
     private var currentHasMedia = false
-    /// Hay sesión de Pomodoro: la isla abierta tiene su franja
+    /// Hay sesión de Pomodoro: la isla cerrada tiene su anillo
     private var currentHasPomodoro = false
+    /// Sin sesión, la parte del Pomodoro de Utilidades solo tiene el botón de empezar
+    private var currentPomodoroIdle = true
+    /// La pestaña que se ve con la isla abierta y la última que se eligió: con el atajo o el gesto se abre en ella.
+    /// Son copias, como las de arriba: el modelo no se lee dentro de render()
+    private var currentTab = IslandTab.desktops
+    private var lastTab = IslandTab.desktops
+    private var tabChangedAt: ContinuousClock.Instant?
+    private var tabBadges: [IslandTab: TabBadge] = [:]
+    /// La novedad de Git que todavía no has visto en Desarrollador: rojo si falló el CI de un push, azul si un aviso no llegó a verse
+    private var developerNews: TabBadge?
     /// El aviso que enseña la isla cerrada en lugar de los espacios (canción nueva o batería)
     private var currentPeek: IslandPeek?
     private var trackChanges = TrackChangeDetector()
@@ -87,26 +109,33 @@ final class IslandController {
     private var waitingForPointer = false
     /// Mientras está abierta con toggle(), Esc y los clics en otras apps la cierran
     private var escapeKey: GlobalHotKey?
+    /// Mientras está abierta: ⌥← y ⌥→ cambian de pestaña. Abierta con toggle(), además h y l
+    private var tabKeys: [GlobalHotKey] = []
+    private var vimKeys: [GlobalHotKey] = []
     private var clickMonitor: Any?
     private var autoHideTask: Task<Void, Never>?
     private var screenObserver: NSObjectProtocol?
     /// Al pulsar la tarjeta de un escritorio sin atajo: ofrecer añadirlo (DesktopShortcutAssistant)
     var onMissingShortcut: (() -> Void)?
-    /// El engranaje de la isla abierta: abrir los ajustes
-    var onOpenSettings: (() -> Void)?
+    /// El engranaje de la isla abierta (y «Conectar» de Claude Code): abrir los ajustes, en esa pestaña si se dice
+    var onOpenSettings: ((SettingsWindow.Tab?) -> Void)?
     private var occlusionObserver: NSObjectProtocol?
 
     init(
         store: SpacesStore, icons: AppIcons, menu: AppMenu, focuser: ShortcutFocuser, settings: AppSettings,
-        media: NowPlayingStore, keepAwake: KeepAwake, pomodoro: PomodoroStore
+        media: NowPlayingStore, keepAwake: KeepAwake, pomodoro: PomodoroStore, calendar: CalendarStore,
+        clipboard: ClipboardStore, tools: DevTools
     ) {
         self.store = store
+        self.calendar = calendar
+        self.clipboard = clipboard
         self.icons = icons
         self.focuser = focuser
         self.settings = settings
         self.media = media
         self.keepAwake = keepAwake
         self.pomodoro = pomodoro
+        self.tools = tools
         hosting = IslandHostingView(rootView: IslandView(model: model))
         // Que la vista no cambie el tamaño de la ventana: el marco lo decide NotchGeometry
         hosting.sizingOptions = []
@@ -126,6 +155,17 @@ final class IslandController {
         observeStore()
         observeMedia()
         observePomodoro()
+        observeSystem()
+        observeModules()
+        observeClaude()
+        observeCalendar()
+        // El punto ya puede estar encendido (una reunión en menos de 15 min al arrancar): sin esto, nada lo cambiaría después
+        updateCalendarBadge()
+        calendar.onNotice = { [weak self] event, moment in self?.calendarNotice(event, at: moment) }
+        observeClipboard()
+        clipboard.onColorCopied = { [weak self] hex in self?.colorCopied(hex) }
+        tools.claude.onOutcome = { [weak self] outcome in self?.claudeOutcome(outcome) }
+        tools.git.onNotice = { [weak self] notice in self?.gitNotice(notice) }
         panel.orderFrontRegardless()
 
         screenObserver = NotificationCenter.default.addObserver(
@@ -201,6 +241,7 @@ final class IslandController {
             self.model.fallbackText = spaces.isEmpty ? description : nil
             self.model.reduceMotion = reduceMotion
             self.model.keepAwakeActive = self.keepAwake.isActive
+            self.model.tabBadges = self.tabBadges
         }
 
         // La ventana crece antes de animar y se ajusta al terminar, para que la isla nunca se recorte
@@ -226,6 +267,8 @@ final class IslandController {
         var items: [IslandLayout.StatusItem] = []
         if currentHasMedia && settings.showMusicBars { items.append(.music) }
         if keepAwake.isActive { items.append(.keepAwake) }
+        if tabBadges[.utilities] != nil { items.append(.utilities) }
+        if tabBadges[.developer] != nil { items.append(.developer) }
         if currentHasPomodoro && settings.showPomodoroRing { items.append(.pomodoro) }
         return items
     }
@@ -305,7 +348,7 @@ final class IslandController {
     }
 
     private func expandedLayout(
-        for spaces: [SpaceSummary], geometry: NotchGeometry, screenWidth: CGFloat? = nil
+        for spaces: [SpaceSummary], geometry: NotchGeometry, screenWidth: CGFloat? = nil, tab: IslandTab? = nil
     ) -> IslandExpandedLayout {
         IslandExpandedLayout(
             spaces: spaces,
@@ -314,10 +357,13 @@ final class IslandController {
                 screenWidth: screenWidth ?? self.screenWidth, topRadius: IslandView.openTopRadius
             ),
             topHeight: geometry.notch.height,
+            tab: tab ?? currentTab,
+            tabs: IslandTab.allCases,
+            developerModules: ModuleID.modules(of: .developer).filter { (settings.showDocker || $0 != .docker) && (settings.showGit || $0 != .git) },
             hasMedia: currentHasMedia,
             hasKeepAwake: settings.keepAwakeButton,
-            hasPomodoro: currentHasPomodoro,
-            hasPomodoroButton: settings.showPomodoro,
+            hasPomodoro: settings.showPomodoro,
+            pomodoroIdle: currentPomodoroIdle,
             hasSettingsButton: true
         )
     }
@@ -339,15 +385,166 @@ final class IslandController {
         let timer = pomodoro.timer
         let active = timer.isActive && settings.showPomodoro
         let appeared = active != currentHasPomodoro
+        // Sin sesión, su parte de Utilidades solo tiene el botón de empezar
+        let idleChanged = !timer.isActive != currentPomodoroIdle
         currentHasPomodoro = active
+        currentPomodoroIdle = !timer.isActive
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         withAnimation(reduceMotion ? Self.reducedAnimation : Self.cardAnimation) {
-            model.pomodoro = active ? timer : nil
+            // Con el Pomodoro activado, su parte de Utilidades se dibuja con sesión o sin ella
+            model.pomodoro = settings.showPomodoro ? timer : nil
             model.pomodoroRounds = pomodoro.rules.durations.roundsUntilLongBreak
             model.pomodoroGoal = settings.pomodoroDailyGoal
+            model.pomodoroFocusDuration = pomodoro.rules.durations.focus
         }
-        // Si la franja aparece o desaparece, cambia el alto de la isla abierta
-        if appeared { apply(spaces: currentSpaces, failed: currentFailed) }
+        // Si el anillo de la isla cerrada aparece o desaparece cambian las alas, y con la sesión, los botones
+        if appeared || idleChanged { apply(spaces: currentSpaces, failed: currentFailed) }
+    }
+
+    // MARK: - Sistema
+
+    // Aparte de render(), como la música: el monitor publica una medida cada 2 s y no tiene que recalcular las alas
+    private func observeSystem() {
+        withObservationTracking {
+            updateSystem()
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.observeSystem() }
+        }
+    }
+
+    // Sin animar: animar las barras entre medida y medida redibuja la isla (con su sombra) en cada fotograma durante
+    // medio segundo, y era lo que más consumía con la pestaña abierta
+    private func updateSystem() {
+        model.system = tools.system.snapshot
+    }
+
+    // Las filas de Puertos y Docker, por el mismo camino y por lo mismo: cambian cada 3 s y no tienen que recalcular las alas
+    private func observeModules() {
+        withObservationTracking {
+            updateModules()
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.observeModules() }
+        }
+    }
+
+    private func updateModules() {
+        model.moduleContent = tools.rowsContent()
+    }
+
+    // El punto naranja de Desarrollador mientras alguna sesión de Claude Code espera tu respuesta. El valor se lee dentro del
+    // seguimiento y el cambio se aplica fuera, para que `apply()` no registre sus lecturas aquí
+    private func observeClaude() {
+        withObservationTracking {
+            _ = tools.claude.waitingCount
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                self?.updateDeveloperBadge()
+                self?.observeClaude()
+            }
+        }
+    }
+
+    // El punto de Desarrollador, de un solo sitio porque lo piden dos cosas: naranja mientras una sesión de Claude Code espera tu
+    // respuesta, que manda, y la novedad de Git (`developerNews`), hasta que abres la pestaña
+    private func updateDeveloperBadge() {
+        setBadge(.developer(claudeWaiting: tools.claude.waitingCount, news: developerNews), for: .developer)
+    }
+
+    // Lo que enseña el módulo Portapapeles: se lee dentro del seguimiento, como el calendario
+    private func observeClipboard() {
+        withObservationTracking {
+            let snapshot = clipboard.snapshot
+            if snapshot != model.clipboard { model.clipboard = snapshot }
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.observeClipboard() }
+        }
+    }
+
+    // Lo que enseña el módulo Calendario y el punto azul de Utilidades (un evento empieza en menos de 15 min). El módulo se lee dentro
+    // del seguimiento, como las filas de Puertos y Docker; el punto, como el de Claude, se lee dentro y se aplica fuera para que
+    // `apply()` no registre sus lecturas aquí
+    private func observeCalendar() {
+        withObservationTracking {
+            let snapshot = calendar.snapshot
+            if snapshot != model.calendar { model.calendar = snapshot }
+            _ = calendar.isBadgeOn
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                self?.updateCalendarBadge()
+                self?.observeCalendar()
+            }
+        }
+    }
+
+    private func updateCalendarBadge() {
+        setBadge(calendar.isBadgeOn ? .info : nil, for: .utilities)
+    }
+
+    /// Un evento está a 5 minutos de empezar: se guarda en el módulo Avisos y la isla cerrada lo dice unos segundos (el punto azul de
+    /// Utilidades ya lleva encendido desde los 15 min, así que no deja otro rastro)
+    private func calendarNotice(_ event: CalendarEvent, at moment: Date) {
+        let title = ClaudeHookText.clean(event.title, limit: 60)
+        let subtitle = CalendarTimeline.noticeSubtitle(for: event, at: moment, calendar: calendar.calendar)
+        tools.notices.record(NoticeEntry(date: moment, tone: .active, title: title, detail: subtitle, origin: .calendar))
+        announce(
+            IslandNotice(symbol: "calendar.badge.clock", tone: .info, title: title, subtitle: subtitle, priority: 30), failed: false,
+            leavesTrace: false
+        )
+    }
+
+    /// Un aviso de Git: se guarda en el módulo Avisos y la isla cerrada lo dice unos segundos
+    private func gitNotice(_ notice: GitNotice) {
+        tools.notices.record(notice.entry(date: Date()))
+        announce(notice.notice, failed: notice.kind == .ci(.failed))
+    }
+
+    /// Un aviso de la terminal ya aceptado por `TerminalNotices` (los manda `yb`): siempre queda en el módulo Avisos y, salvo que la
+    /// terminal esté delante, la isla cerrada lo dice unos segundos
+    func terminalNotice(_ result: TerminalNotices.Result) {
+        tools.notices.record(result.entry)
+        guard !result.suppressPeek else { return }
+        announce(result.notice, failed: result.failed)
+    }
+
+    /// Un aviso genérico (Git, terminal): la isla cerrada lo dice unos segundos. Cada aviso sale una sola vez, así que uno que no
+    /// puede verse ahora (isla abierta, pantalla completa, un cambio de escritorio o un aviso más importante en pantalla) no se
+    /// pierde sin rastro: deja un punto azul en Desarrollador. Lo que salió mal (un CI o un comando que falló) deja el rojo, se vea
+    /// o no. Si estás mirando Desarrollador no hace falta
+    private func announce(_ notice: IslandNotice, failed: Bool, leavesTrace: Bool = true) {
+        let peek = IslandPeek.notice(notice)
+        let shown = canShow(peek)
+        if shown { schedulePeek(peek) }
+        let news: TabBadge? = failed ? .alert : shown ? nil : .info
+        guard leavesTrace || failed, let news, !(expansion == .open && currentTab == .developer) else { return }
+        // El rojo no lo tapa el azul
+        if developerNews != .alert { developerNews = news }
+        updateDeveloperBadge()
+    }
+
+    /// Una sesión de Claude Code pregunta o terminó (ClaudeSessions): se guarda en el módulo Avisos y la isla cerrada lo dice unos
+    /// segundos. Al terminar, Git mira si dejó cambios sin commit
+    private func claudeOutcome(_ outcome: ClaudeOutcome) {
+        let sessionID: String
+        switch outcome {
+        case .asks(let id, _, _), .finished(let id, _, _): sessionID = id
+        }
+        if case .finished = outcome { tools.git.claudeFinished(sessionID: sessionID) }
+        guard let peek = ClaudePeek.make(for: outcome, notifyFinished: settings.claudeNotifyFinished) else { return }
+        tools.notices.record(peek.entry(sessionID: sessionID, date: Date()))
+        schedulePeek(.claude(peek))
+    }
+
+    /// Dice a DevTools qué pestaña se ve: la elegida con la isla abierta, ninguna con la isla cerrada. Se llama al abrir,
+    /// al cerrar (también al recogerse en el notch) y al cambiar de pestaña, y en ningún otro sitio
+    private func reportVisibleTab() {
+        let visible = expansion == .open ? currentTab : nil
+        tools.setVisibleTab(visible)
+        calendar.setVisible(visible == .utilities)
+        // El punto de Git avisa hasta que abres la pestaña
+        if visible == .developer, developerNews != nil {
+            developerNews = nil
+            updateDeveloperBadge()
+        }
     }
 
     // MARK: - Ahora suena
@@ -430,10 +627,18 @@ final class IslandController {
     }
 
     // Solo con la isla cerrada, a la vista y con espacios: nunca mientras cambia el escritorio ni a pantalla completa
+    private var canShowPeeks: Bool {
+        expansion == .closed && tuckedAt == nil && !currentLayout.isCollapsed && !currentSpaces.isEmpty
+    }
+
+    /// Un aviso se vería ahora: la isla lo admite y no hay otro más importante en pantalla (`schedulePeek` lo descartaría)
+    private func canShow(_ peek: IslandPeek) -> Bool {
+        canShowPeeks && (currentPeek?.priority ?? 0) <= peek.priority
+    }
+
     private func setPeek(_ peek: IslandPeek?) {
         guard peek != currentPeek else { return }
-        guard peek == nil || (expansion == .closed && tuckedAt == nil && !currentLayout.isCollapsed && !currentSpaces.isEmpty)
-        else { return }
+        guard peek == nil || canShowPeeks else { return }
         currentPeek = peek
         growWindow()
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
@@ -447,9 +652,14 @@ final class IslandController {
     // Dos dedos de lado sobre la franja de la isla abierta: a la izquierda, siguiente; a la derecha, anterior.
     // El gesto se sigue siempre, para que su estado no se desordene, y la posición se mira al dispararse
     private func scrolled(_ sample: SideSwipeTracker.Sample) {
-        guard let direction = sideSwipe.track(sample),
-              let (point, islandWidth, topHeight) = pointerInOpenIsland(),
-              model.expanded.musicContains(point, islandWidth: islandWidth, topHeight: topHeight) else { return }
+        guard let direction = sideSwipe.track(sample), let (point, islandWidth, topHeight) = pointerInOpenIsland() else { return }
+        // Sobre la tira de días del calendario, pasa de semana: dedos a la izquierda, la siguiente
+        if model.expanded.calendarStripContains(point, islandWidth: islandWidth, topHeight: topHeight) {
+            Logger.app.info("Gesto: \(direction == .left ? "semana siguiente" : "semana anterior", privacy: .public) en el calendario")
+            calendar.shiftWeek(direction == .left ? 1 : -1)
+            return
+        }
+        guard model.expanded.musicContains(point, islandWidth: islandWidth, topHeight: topHeight) else { return }
         let control: IslandExpandedLayout.Control = direction == .left ? .next : .previous
         Logger.app.info("Gesto: \(direction == .left ? "siguiente" : "anterior", privacy: .public) en la música")
         // El botón se hunde un instante, para que se vea qué ha pasado
@@ -486,20 +696,28 @@ final class IslandController {
         openTask = Task {
             try? await Task.sleep(for: Self.openDelay)
             guard !Task.isCancelled, expansion == .peek else { return }
-            open()
+            open(.pointer)
         }
         watchPointer()
     }
 
-    private func open() {
+    private func open(_ opening: IslandTab.Opening) {
         cancelPeek()
         expansion = .open
+        // Con el puntero se abre en los escritorios; con el atajo o el gesto, en la última pestaña que se eligió. La
+        // pestaña y su layout se fijan antes de crecer la ventana, que mide lo que pide la pestaña
+        currentTab = IslandTab.opening(opening, last: lastTab, among: IslandTab.allCases)
+        model.selectedTab = currentTab
+        if let geometry { model.expanded = expandedLayout(for: currentSpaces, geometry: geometry) }
         // Los atajos se leen al abrir: así se ven los cambios hechos en Ajustes sin reiniciar la app
         model.shortcutLabels = focuser.labels(for: currentSpaces.map(\.index))
         growWindow()
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         withAnimation(reduceMotion ? Self.reducedAnimation : Self.openAnimation) { model.isExpanded = true }
-        Logger.app.info("Isla abierta")
+        registerTabKeys(vim: opening.usesVimKeys)
+        reportVisibleTab()
+        let title = currentTab.title
+        Logger.app.info("Isla abierta (\(title, privacy: .public))")
     }
 
     private func close() {
@@ -508,6 +726,7 @@ final class IslandController {
         releaseHold()
         let wasOpen = expansion == .open
         expansion = .closed
+        reportVisibleTab()
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         withAnimation(reduceMotion ? Self.reducedAnimation : Self.closeAnimation) {
             model.isExpanded = false
@@ -516,6 +735,7 @@ final class IslandController {
             model.pressedSpace = nil
             model.hoveredControl = nil
             model.pressedControl = nil
+            model.hoveredRow = nil
         }
         settleWindow()
         if wasOpen { Logger.app.info("Isla cerrada") }
@@ -532,6 +752,8 @@ final class IslandController {
                 guard !Task.isCancelled, expansion != .closed else { return }
                 if !pointerIsOverIsland() {
                     if waitingForPointer { continue }
+                    // La isla acaba de cambiar de tamaño con el teclado y el puntero quedó fuera: se le da un margen
+                    if let tabChangedAt, ContinuousClock.now - tabChangedAt < Self.tabResizeGrace { continue }
                     close()
                     return
                 }
@@ -553,7 +775,7 @@ final class IslandController {
         guard tuckedAt == nil, !currentSpaces.isEmpty else { return }
         openTask?.cancel()
         releaseHold()
-        open()
+        open(.keyboard)
         waitingForPointer = !pointerIsOverIsland()
         escapeKey = GlobalHotKey.escape { [weak self] in self?.close() }
         // Los clics en la isla son de la app y no llegan aquí: solo los de otras apps
@@ -578,6 +800,9 @@ final class IslandController {
     private func releaseHold() {
         waitingForPointer = false
         escapeKey = nil
+        // Las teclas de las pestañas solo se tienen mientras la isla está abierta: no se le quitan a las demás apps
+        tabKeys = []
+        vimKeys = []
         if let clickMonitor { NSEvent.removeMonitor(clickMonitor) }
         clickMonitor = nil
         autoHideTask?.cancel()
@@ -589,6 +814,69 @@ final class IslandController {
         guard let geometry else { return false }
         let island = geometry.windowFrame(width: model.islandWidth, height: model.islandHeight)
         return island.insetBy(dx: -2, dy: -2).contains(NSEvent.mouseLocation)
+    }
+
+    // MARK: - Pestañas
+
+    // ⌥← y ⌥→ pasan a la pestaña anterior o a la siguiente con la isla abierta, también con el hover; abierta con el
+    // teclado o el gesto, además h y l. Se sueltan todas en releaseHold()
+    private func registerTabKeys(vim: Bool) {
+        // Primero se sueltan las anteriores: registrar dos veces la misma combinación falla
+        tabKeys = []
+        vimKeys = []
+        let arrows = [(kVK_LeftArrow, IslandTab.Step.previous), (kVK_RightArrow, .next)]
+        tabKeys = arrows.compactMap { key, step in
+            GlobalHotKey(keyCode: key, modifiers: optionKey) { [weak self] in self?.step(step) }
+        }
+        if vim {
+            vimKeys = Self.vimTabKeys.compactMap { key, step in
+                GlobalHotKey(keyCode: key, modifiers: 0) { [weak self] in self?.step(step) }
+            }
+        }
+        // Una tecla que otra app ya tiene (o que el usuario eligió para abrir la isla) no se registra: que se sepa
+        let expected = arrows.count + (vim ? Self.vimTabKeys.count : 0)
+        let registered = tabKeys.count + vimKeys.count
+        if registered < expected {
+            Logger.app.info("Pestañas: solo se registraron \(registered) de \(expected) teclas")
+        }
+    }
+
+    private func step(_ step: IslandTab.Step) {
+        select(currentTab.stepping(step, among: IslandTab.allCases))
+    }
+
+    /// Cambia de pestaña con la isla abierta. La ventana crece antes de animar y se ajusta después, como siempre,
+    /// porque cada pestaña mide lo suyo. Se recuerda para abrir con el atajo o el gesto
+    private func select(_ tab: IslandTab) {
+        guard expansion == .open, let geometry else { return }
+        lastTab = tab
+        // Usarla es actividad: la isla abierta con el atajo no se oculta sola mientras se cambia de pestaña
+        if autoHideTask != nil, settings.autoHide {
+            autoHideTask?.cancel()
+            scheduleAutoHide(after: .seconds(settings.autoHideDelay))
+        }
+        guard tab != currentTab else { return }
+        currentTab = tab
+        tabChangedAt = .now
+        reportVisibleTab()
+        growWindow()
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        withAnimation(reduceMotion ? Self.reducedAnimation : Self.tabAnimation) {
+            model.selectedTab = tab
+            model.expanded = expandedLayout(for: currentSpaces, geometry: geometry)
+            model.hoveredSpace = nil
+            model.hoveredControl = nil
+            model.hoveredRow = nil
+        }
+        settleWindow()
+        Logger.app.info("Isla: pestaña \(tab.title, privacy: .public)")
+    }
+
+    /// Una novedad en una pestaña: un punto en su píldora y su ícono en la isla cerrada. nil la quita
+    func setBadge(_ badge: TabBadge?, for tab: IslandTab) {
+        guard tabBadges[tab] != badge else { return }
+        tabBadges[tab] = badge
+        apply(spaces: currentSpaces, failed: currentFailed)
     }
 
     // MARK: - Tarjetas
@@ -613,18 +901,39 @@ final class IslandController {
     // Los botones de la música y el de mantener despierto
     private func controlUnderPointer() -> IslandExpandedLayout.Control? {
         guard let (point, islandWidth, topHeight) = pointerInOpenIsland() else { return nil }
-        return model.expanded.control(at: point, islandWidth: islandWidth, topHeight: topHeight)
+        if let control = model.expanded.control(at: point, islandWidth: islandWidth, topHeight: topHeight) { return control }
+        if let control = model.expanded.calendarControl(
+            at: point, islandWidth: islandWidth, topHeight: topHeight, access: model.calendar?.access ?? .notDetermined,
+            joinable: model.calendar?.items.map { $0.event.joinURL != nil } ?? []
+        ) { return .calendar(control) }
+        if let shown = model.clipboard, let control = model.expanded.clipboardControl(
+            at: point, islandWidth: islandWidth, topHeight: topHeight, mode: shown.mode, state: shown.state,
+            entryCount: shown.rows.count, swatchCount: shown.colors.count
+        ) { return .clipboard(control) }
+        return model.expanded.moduleControl(
+            at: point, islandWidth: islandWidth, topHeight: topHeight, rows: model.moduleRows
+        ).map { .module($0) }
+    }
+
+    // La fila de Puertos o Docker bajo el puntero: ahí se ven sus botones
+    private func moduleRowUnderPointer() -> String? {
+        guard let (point, islandWidth, topHeight) = pointerInOpenIsland() else { return nil }
+        return model.expanded.moduleRow(
+            at: point, islandWidth: islandWidth, topHeight: topHeight, rows: model.moduleRows
+        )?.row.id
     }
 
     // Solo se iluminan las tarjetas a las que se puede ir, y los botones
     private func updateHoveredCard() {
         let hovered = spaceUnderPointer().flatMap { model.canPress($0) ? $0.index : nil }
         let control = controlUnderPointer()
-        guard hovered != model.hoveredSpace || control != model.hoveredControl else { return }
+        let row = moduleRowUnderPointer()
+        guard hovered != model.hoveredSpace || control != model.hoveredControl || row != model.hoveredRow else { return }
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         withAnimation(reduceMotion ? Self.reducedAnimation : Self.cardAnimation) {
             model.hoveredSpace = hovered
             model.hoveredControl = control
+            model.hoveredRow = row
         }
     }
 
@@ -665,13 +974,22 @@ final class IslandController {
     }
 
     private func perform(_ control: IslandExpandedLayout.Control) {
-        Logger.app.info("Clic: \(String(describing: control), privacy: .public)")
+        // Sin el payload de los módulos: la fila de un proyecto de Compose lleva el nombre de la carpeta del usuario
+        if case .module(let module) = control {
+            Logger.app.info("Clic: módulo \(module.module.rawValue, privacy: .public) \(module.action.rawValue, privacy: .public)")
+        } else {
+            Logger.app.info("Clic: \(String(describing: control), privacy: .public)")
+        }
         switch control {
+        case .tab(let tab): select(tab)
+        case .module(let control): perform(module: control)
+        case .calendar(let control): perform(calendar: control)
+        case .clipboard(let control): perform(clipboard: control)
         case .keepAwake: keepAwake.toggle()
         case .settings:
             close()
-            onOpenSettings?()
-        case .pomodoroToggle, .pomodoroPlayPause: pomodoro.toggle()
+            onOpenSettings?(nil)
+        case .pomodoroPlayPause: pomodoro.toggle()
         case .pomodoroSkip: pomodoro.skip()
         case .pomodoroStop: pomodoro.stop()
         case .playPause: media.togglePlayPause()
@@ -680,6 +998,74 @@ final class IslandController {
         case .artwork:
             close()
             media.openSource()
+        }
+    }
+
+    // Cambiar de modo, copiar una copia o una muestra, borrar el historial y las herramientas dejan la isla abierta (el resultado se
+    // dice en la cabecera del módulo). El cuentagotas y lo que abre un aviso del sistema o Ajustes del Sistema la cierran: lo de
+    // encima necesita el puntero
+    private func perform(clipboard control: ClipboardControl) {
+        switch control {
+        case .mode(let mode): clipboard.setMode(mode)
+        case .clear: clipboard.clearHistory()
+        case .entry(let index):
+            // Por el identificador de la fila que se dibujó, no por la posición
+            if let shown = model.clipboard?.rows, shown.indices.contains(index) { clipboard.copy(entryID: shown[index].id) }
+        case .tool(let tool): clipboard.run(tool)
+        case .swatch(let index): clipboard.copy(swatchAt: index)
+        case .picker:
+            close()
+            clipboard.pickColor()
+        case .access:
+            close()
+            clipboard.requestAccess()
+        }
+    }
+
+    /// Un color elegido con el cuentagotas: la isla cerrada dice que ya está copiado
+    private func colorCopied(_ hex: String) {
+        announce(IslandNotice(symbol: "eyedropper", tone: .ok, title: hex, subtitle: "Color copiado"), failed: false, leavesTrace: false)
+    }
+
+    // Elegir un día o pasar de semana deja la isla abierta; abrir Calendario, unirse a una videollamada y abrir Ajustes del Sistema la
+    // cierran, porque la otra app sale por encima. «Unirse» lee el evento antes de cerrar: al cerrarse, la tira vuelve a hoy
+    private func perform(calendar control: CalendarControl) {
+        switch control {
+        case .day(let index): calendar.select(dayAt: index)
+        case .previousWeek: calendar.shiftWeek(-1)
+        case .nextWeek: calendar.shiftWeek(1)
+        case .event:
+            close()
+            CalendarStore.openCalendarApp()
+        case .join(let index):
+            // El enlace de lo que se dibujó, no de la lista de ahora: entre el dibujo y el clic pudo cambiar
+            if let url = model.calendar?.items[safe: index]?.event.joinURL { calendar.join(url) }
+            close()
+        case .access:
+            let needsPrompt = calendar.access == .notDetermined
+            close()
+            if needsPrompt {
+                // El aviso del sistema pide el permiso. Es el usuario quien lo concede
+                Task { await calendar.requestAccess() }
+            } else {
+                calendar.openPrivacySettings()
+            }
+        }
+    }
+
+    // Abrir en el navegador y lo que pregunta antes (cerrar un proceso, parar un contenedor) cierran la isla: la pregunta
+    // sale por encima y el puntero sale de la isla. Ir a una sesión de Claude y «Conectar» (que abre Ajustes) también. Lo demás
+    // (copiar, reiniciar, iniciar, ver los parados) la deja abierta
+    // DevTools resuelve el proceso o el contenedor al llamarlo, antes de que la isla se cierre: al cerrarse, los módulos dejan
+    // de medir y olvidan lo que tenían
+    private func perform(module control: ModuleControl) {
+        tools.perform(control)
+        switch control.action {
+        case .open, .close, .stop, .activate: close()
+        case .connect:
+            close()
+            onOpenSettings?(.developer)
+        case .copy, .restart, .start, .showStopped, .hideStopped: break
         }
     }
 
@@ -721,6 +1107,7 @@ final class IslandController {
         untuckTask?.cancel()
         releaseHold()
         expansion = .closed
+        reportVisibleTab()
         tuckedAt = .now
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         withAnimation(reduceMotion ? Self.reducedAnimation : Self.closeAnimation) {
@@ -916,6 +1303,20 @@ private extension SideSwipeTracker.Sample {
 
 #if DEBUG
 extension IslandController {
+    /// yabaibar://abrir?tab=desarrollador: abre la isla en esa pestaña como con ⌥I, pero sin ocultarse sola, para medir
+    /// lo que consume con la pestaña a la vista. Se cierra con yabaibar://cerrar, con Esc o con un clic en otra app
+    func debugOpen(tab: IslandTab) {
+        guard expansion == .closed else { return }
+        lastTab = tab
+        toggle()
+        autoHideTask?.cancel()
+        autoHideTask = nil
+    }
+
+    func debugClose() {
+        if expansion == .open { close() }
+    }
+
     /// Simula cambios de espacio activo muy seguidos, como pasar rápido entre escritorios,
     /// sin tocar los espacios reales. Al terminar vuelve a dibujar el estado real.
     func stressTest(rounds: Int = 40, interval: Duration = .milliseconds(40)) {
@@ -938,26 +1339,62 @@ extension IslandController {
     /// Con `expanded`, la dibuja abierta un instante (se restaura enseguida, sin llegar a la pantalla);
     /// con `hoveringCard`, además con el puntero sobre la primera tarjeta inactiva a la que se puede ir.
     /// Con `peek`, la isla cerrada con ese aviso (el de canción nueva, solo si suena algo). Con `simulating`, la
-    /// isla con el notch y la pantalla de otro Mac, para revisarla sin tenerlo. Las barras de la música y el anillo
-    /// del Pomodoro son capas de Core Animation y ImageRenderer no las dibuja
+    /// isla con el notch y la pantalla de otro Mac, para revisarla sin tenerlo. Con `tab`, la isla abierta en esa
+    /// pestaña; con `badges`, con novedades en Utilidades y Desarrollador (su ícono en la isla cerrada y el punto en
+    /// las píldoras). Las barras de la música y el anillo del Pomodoro son capas de Core Animation y ImageRenderer no
+    /// las dibuja
     func saveSnapshot(
         expanded: Bool = false, hoveringCard: Bool = false, peek: IslandPeek? = nil,
-        simulating simulated: (screen: CGSize, notch: CGSize)? = nil
+        simulating simulated: (screen: CGSize, notch: CGSize)? = nil, tab: IslandTab? = nil, badges: Bool = false,
+        hoveringRowOf hoveredModule: ModuleID? = nil
     ) {
         let wasExpanded = model.isExpanded
         let wasHovered = model.hoveredSpace
         let wasPeek = model.peek
         let wasGeometry = (model.centerWidth, model.height, model.expanded)
-        if let simulated {
-            let geometry = NotchGeometry.centered(screen: simulated.screen, notch: simulated.notch)
+        let wasTab = model.selectedTab
+        let wasBadges = model.tabBadges
+        let wasLayout = model.layout
+        let wasCurrentLayout = currentLayout
+        let wasSystem = model.system
+        let wasModules = model.moduleContent
+        let wasHoveredRow = model.hoveredRow
+        let wasCalendar = model.calendar
+        let wasClipboard = model.clipboard
+        // Los monitores solo corren con la pestaña a la vista: el snapshot enseña la última medida que haya
+        if tab == .developer {
+            model.system = tools.system.snapshot
+            model.moduleContent = tools.rowsContent()
+            // La primera fila de ese módulo, con el puntero encima: se ven sus botones
+            if let hoveredModule { model.hoveredRow = model.moduleContent[hoveredModule]?.rows.first?.id }
+        }
+        // El calendario se dibuja con lo que haya ahora, sin esperar al seguimiento
+        if tab == .utilities {
+            model.calendar = calendar.snapshot
+            model.clipboard = clipboard.snapshotForImage
+        }
+        // Con novedades, las alas son más anchas: el layout de la isla abierta se calcula con ellas, como hace apply()
+        if badges {
+            let layout = IslandLayout(spaces: currentSpaces, statusItems: statusItems() + [.utilities, .developer])
+            currentLayout = layout
+            model.layout = layout
+            model.tabBadges = [.utilities: .info, .developer: .attention]
+        }
+        let geometry = simulated.map { NotchGeometry.centered(screen: $0.screen, notch: $0.notch) } ?? self.geometry
+        if let simulated, let geometry {
             model.centerWidth = geometry.centerWidth
             model.height = geometry.notch.height
-            model.expanded = expandedLayout(for: currentSpaces, geometry: geometry, screenWidth: simulated.screen.width)
             let notch = "\(Int(simulated.notch.width)) × \(Int(simulated.notch.height)) pt"
             let screen = "\(Int(simulated.screen.width)) × \(Int(simulated.screen.height))"
             Logger.app.info("Snapshot simulado: notch de \(notch, privacy: .public) en \(screen, privacy: .public)")
         }
-        model.isExpanded = expanded || hoveringCard || wasExpanded
+        if let geometry, simulated != nil || tab != nil || badges {
+            model.expanded = expandedLayout(
+                for: currentSpaces, geometry: geometry, screenWidth: simulated?.screen.width, tab: tab
+            )
+        }
+        if let tab { model.selectedTab = tab }
+        model.isExpanded = expanded || hoveringCard || wasExpanded || tab != nil
         if model.isExpanded { model.shortcutLabels = focuser.labels(for: currentSpaces.map(\.index)) }
         if hoveringCard {
             model.hoveredSpace = currentSpaces.first { !$0.isFocused && model.canSwitch(to: $0) }?.index
@@ -967,6 +1404,15 @@ extension IslandController {
             model.isExpanded = wasExpanded
             model.hoveredSpace = wasHovered
             model.peek = wasPeek
+            model.selectedTab = wasTab
+            model.tabBadges = wasBadges
+            model.layout = wasLayout
+            currentLayout = wasCurrentLayout
+            model.system = wasSystem
+            model.moduleContent = wasModules
+            model.hoveredRow = wasHoveredRow
+            model.calendar = wasCalendar
+            model.clipboard = wasClipboard
             (model.centerWidth, model.height, model.expanded) = wasGeometry
         }
         let size = CGSize(width: model.islandWidth + 2 * Self.shadowMargin, height: model.islandHeight + Self.shadowMargin)

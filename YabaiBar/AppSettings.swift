@@ -95,7 +95,7 @@ final class AppSettings {
     /// Segundos antes del final para el aviso; 0, sin aviso
     static let pomodoroWarnings = [0, 10, 15, 30, 60]
 
-    /// El botón y la franja del Pomodoro en la isla abierta. Al apagarlo se termina la sesión
+    /// La parte del Pomodoro en la pestaña Utilidades de la isla abierta. Al apagarlo se termina la sesión
     var showPomodoro: Bool {
         didSet { defaults.set(showPomodoro, forKey: Key.showPomodoro) }
     }
@@ -137,6 +137,111 @@ final class AppSettings {
     /// El anillo de progreso al final del ala derecha de la isla cerrada, mientras hay sesión
     var showPomodoroRing: Bool {
         didSet { defaults.set(showPomodoroRing, forKey: Key.showPomodoroRing) }
+    }
+
+    /// El módulo Docker de la pestaña Desarrollador. Apagado, no se ve ni consulta nada
+    var showDocker: Bool {
+        didSet { defaults.set(showDocker, forKey: Key.showDocker) }
+    }
+
+    /// Un aviso en la isla cerrada cuando una sesión de Claude Code termina tras trabajar más de 30 s
+    var claudeNotifyFinished: Bool {
+        didSet { defaults.set(claudeNotifyFinished, forKey: Key.claudeNotifyFinished) }
+    }
+
+    /// El módulo Git de la pestaña Desarrollador y sus avisos. Apagado, no se vigila ningún repositorio
+    var showGit: Bool {
+        didSet { defaults.set(showGit, forKey: Key.showGit) }
+    }
+
+    /// Preguntar a GitHub con `gh` (releases, CI y PR). Apagado, solo se mira lo que git sabe en local
+    var gitUseGitHub: Bool {
+        didSet { defaults.set(gitUseGitHub, forKey: Key.gitUseGitHub) }
+    }
+
+    /// Las carpetas que se vigilan además de las de las sesiones de Claude Code abiertas
+    var gitFolders: [String] {
+        didSet { defaults.set(gitFolders, forKey: Key.gitFolders) }
+    }
+
+    static let gitUnpushedMinutesOptions = [10, 15, 30, 60, 120]
+
+    /// Los avisos de la isla cerrada cuando un comando largo de la terminal termina (los manda `yb`, ver ZshHook)
+    var terminalNotices: Bool {
+        didSet { defaults.set(terminalNotices, forKey: Key.terminalNotices) }
+    }
+
+    static let terminalMinSecondsOptions = [5, 10, 20, 30, 60, 120]
+
+    /// El historial del portapapeles de la pestaña Utilidades. Apagado hasta que el usuario lo enciende: macOS pregunta antes de dejar
+    /// que una app lea el portapapeles sin que pegues, y el historial apunta todo lo que copias
+    var clipboardHistory: Bool {
+        didSet { defaults.set(clipboardHistory, forKey: Key.clipboardHistory) }
+    }
+
+    /// Guardar el historial en disco (en Application Support, solo legible por el usuario). Apagado, solo vive en memoria
+    var clipboardPersist: Bool {
+        didSet { defaults.set(clipboardPersist, forKey: Key.clipboardPersist) }
+    }
+
+    /// Las apps (por su identificador) de las que no se guarda nada. Por defecto, los gestores de contraseñas conocidos
+    var clipboardIgnoredApps: [String] {
+        didSet { defaults.set(clipboardIgnoredApps, forKey: Key.clipboardIgnoredApps) }
+    }
+
+    /// Las últimas muestras del selector de color, en hexadecimal
+    var clipboardColors: [String] {
+        didSet { defaults.set(clipboardColors, forKey: Key.clipboardColors) }
+    }
+
+    /// Un aviso en la isla cerrada 5 minutos antes de cada evento del calendario
+    var calendarNotice: Bool {
+        didSet { defaults.set(calendarNotice, forKey: Key.calendarNotice) }
+    }
+
+    /// Los calendarios (por su identificador) que no se leen. Vacío: todos
+    var calendarExcluded: [String] {
+        didSet { defaults.set(calendarExcluded, forKey: Key.calendarExcluded) }
+    }
+
+    /// Lo mínimo que tiene que tardar un comando para avisar. Además del `YB_AVISO_MIN` de la shell: manda el más alto
+    var terminalMinSeconds: Int {
+        didSet { defaults.set(terminalMinSeconds, forKey: Key.terminalMinSeconds) }
+    }
+
+    /// Avisar aunque la app de la terminal esté delante. Apagado, un comando que termina mientras lo miras no sale en la isla
+    /// (sí en el módulo Avisos)
+    var terminalWhenFrontmost: Bool {
+        didSet { defaults.set(terminalWhenFrontmost, forKey: Key.terminalWhenFrontmost) }
+    }
+
+    /// Cada aviso de Git, por separado
+    var gitNoticeUnpushed: Bool {
+        didSet { defaults.set(gitNoticeUnpushed, forKey: Key.gitNoticeUnpushed) }
+    }
+
+    /// Los minutos con commits sin subir antes de avisar
+    var gitUnpushedMinutes: Int {
+        didSet { defaults.set(gitUnpushedMinutes, forKey: Key.gitUnpushedMinutes) }
+    }
+
+    var gitNoticeUncommitted: Bool {
+        didSet { defaults.set(gitNoticeUncommitted, forKey: Key.gitNoticeUncommitted) }
+    }
+
+    var gitNoticeUnreleased: Bool {
+        didSet { defaults.set(gitNoticeUnreleased, forKey: Key.gitNoticeUnreleased) }
+    }
+
+    var gitNoticeCI: Bool {
+        didSet { defaults.set(gitNoticeCI, forKey: Key.gitNoticeCI) }
+    }
+
+    var gitNoticeSettings: GitNoticeSettings {
+        GitNoticeSettings(
+            unpushed: gitNoticeUnpushed, unpushedAfter: TimeInterval(gitUnpushedMinutes) * 60, uncommitted: gitNoticeUncommitted,
+            unreleased: gitNoticeUnreleased, ci: gitNoticeCI
+        )
     }
 
     static let duckLevels = 20...60
@@ -214,6 +319,25 @@ final class AppSettings {
         static let pomodoroWarning = "pomodoroWarning"
         static let pomodoroDailyGoal = "pomodoroDailyGoal"
         static let showPomodoroRing = "showPomodoroRing"
+        static let showDocker = "showDocker"
+        static let claudeNotifyFinished = "claudeNotifyFinished"
+        static let showGit = "showGit"
+        static let gitUseGitHub = "gitUseGitHub"
+        static let gitFolders = "gitFolders"
+        static let gitNoticeUnpushed = "gitNoticeUnpushed"
+        static let gitUnpushedMinutes = "gitUnpushedMinutes"
+        static let gitNoticeUncommitted = "gitNoticeUncommitted"
+        static let gitNoticeUnreleased = "gitNoticeUnreleased"
+        static let gitNoticeCI = "gitNoticeCI"
+        static let terminalNotices = "terminalNotices"
+        static let terminalMinSeconds = "terminalMinSeconds"
+        static let terminalWhenFrontmost = "terminalWhenFrontmost"
+        static let clipboardHistory = "clipboardHistory"
+        static let clipboardPersist = "clipboardPersist"
+        static let clipboardIgnoredApps = "clipboardIgnoredApps"
+        static let clipboardColors = "clipboardColors"
+        static let calendarNotice = "calendarNotice"
+        static let calendarExcluded = "calendarExcluded"
         static let pomodoroSound = "pomodoroSound"
         static let pomodoroDuckMusic = "pomodoroDuckMusic"
         static let pomodoroDuckLevel = "pomodoroDuckLevel"
@@ -252,6 +376,27 @@ final class AppSettings {
         pomodoroWarning = Self.pomodoroWarnings.contains(warning) ? warning : 30
         pomodoroDailyGoal = int(Key.pomodoroDailyGoal, Self.dailyGoals, 8)
         showPomodoroRing = defaults.object(forKey: Key.showPomodoroRing) as? Bool ?? true
+        showDocker = defaults.object(forKey: Key.showDocker) as? Bool ?? true
+        claudeNotifyFinished = defaults.object(forKey: Key.claudeNotifyFinished) as? Bool ?? false
+        showGit = defaults.object(forKey: Key.showGit) as? Bool ?? true
+        gitUseGitHub = defaults.object(forKey: Key.gitUseGitHub) as? Bool ?? true
+        gitFolders = defaults.stringArray(forKey: Key.gitFolders) ?? []
+        gitNoticeUnpushed = defaults.object(forKey: Key.gitNoticeUnpushed) as? Bool ?? true
+        let minutes = defaults.object(forKey: Key.gitUnpushedMinutes) as? Int ?? 30
+        gitUnpushedMinutes = Self.gitUnpushedMinutesOptions.contains(minutes) ? minutes : 30
+        gitNoticeUncommitted = defaults.object(forKey: Key.gitNoticeUncommitted) as? Bool ?? true
+        gitNoticeUnreleased = defaults.object(forKey: Key.gitNoticeUnreleased) as? Bool ?? true
+        gitNoticeCI = defaults.object(forKey: Key.gitNoticeCI) as? Bool ?? true
+        terminalNotices = defaults.object(forKey: Key.terminalNotices) as? Bool ?? true
+        let terminalMin = defaults.object(forKey: Key.terminalMinSeconds) as? Int ?? 10
+        terminalMinSeconds = Self.terminalMinSecondsOptions.contains(terminalMin) ? terminalMin : 10
+        terminalWhenFrontmost = defaults.object(forKey: Key.terminalWhenFrontmost) as? Bool ?? false
+        clipboardHistory = defaults.object(forKey: Key.clipboardHistory) as? Bool ?? false
+        clipboardPersist = defaults.object(forKey: Key.clipboardPersist) as? Bool ?? false
+        clipboardIgnoredApps = defaults.stringArray(forKey: Key.clipboardIgnoredApps) ?? ClipboardFilter.defaultIgnoredApps
+        clipboardColors = defaults.stringArray(forKey: Key.clipboardColors) ?? []
+        calendarNotice = defaults.object(forKey: Key.calendarNotice) as? Bool ?? true
+        calendarExcluded = defaults.stringArray(forKey: Key.calendarExcluded) ?? []
         pomodoroSound = defaults.object(forKey: Key.pomodoroSound) as? Bool ?? true
         pomodoroDuckMusic = defaults.object(forKey: Key.pomodoroDuckMusic) as? Bool ?? true
         pomodoroDuckLevel = int(Key.pomodoroDuckLevel, Self.duckLevels, 35)

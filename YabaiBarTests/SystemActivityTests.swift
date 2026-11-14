@@ -57,8 +57,8 @@ struct StatusItemLayoutTests {
     }
 }
 
-// Cuatro espacios: cuerpo de 580 pt en una isla de 618. La taza de 26 pt va arriba a la izquierda, a 14 del borde del
-// cuerpo (x = 33) y centrada en la franja del notch de 38 pt (y = 6); el engranaje, a la derecha (x = 559)
+// Cuatro espacios: cuerpo de 580 pt en una isla de 618, con las alas ocupando 400 pt centrados: acaban en
+// x = (618 + 400) / 2 = 509. Los botones de 26 pt van a continuación, centrados en la franja del notch de 38 pt (y = 6)
 struct KeepAwakeLayoutTests {
     private func layout(spaces count: Int = 4, minBodyWidth: CGFloat = 400) -> IslandExpandedLayout {
         let spaces = (1...count).map { summary($0, apps: 0, focused: $0 == 1) }
@@ -67,11 +67,12 @@ struct KeepAwakeLayoutTests {
         )
     }
 
-    @Test func theCupSitsInTheTopLeftCorner() {
-        #expect(layout().keepAwakeFrame(islandWidth: 618, topHeight: 38) == CGRect(x: 33, y: 6, width: 26, height: 26))
-        #expect(layout().control(at: CGPoint(x: 46, y: 19), islandWidth: 618, topHeight: 38) == .keepAwake)
-        // La música sigue respondiendo debajo
-        #expect(layout().control(at: CGPoint(x: 570, y: 174), islandWidth: 618, topHeight: 38) == .next)
+    // Sin engranaje, la taza es el único botón de la derecha y va justo donde acaban las alas
+    @Test func theCupSitsNextToTheRightWing() {
+        #expect(layout().keepAwakeFrame(islandWidth: 618, topHeight: 38) == CGRect(x: 509, y: 6, width: 26, height: 26))
+        #expect(layout().control(at: CGPoint(x: 522, y: 19), islandWidth: 618, topHeight: 38) == .keepAwake)
+        // La música no está en la pestaña de los escritorios
+        #expect(layout().control(at: CGPoint(x: 570, y: 94), islandWidth: 618, topHeight: 38) == nil)
     }
 
     // Con pocos espacios, el cuerpo deja sitio al botón a cada lado de las alas
@@ -80,25 +81,31 @@ struct KeepAwakeLayoutTests {
         #expect(layout(spaces: 2, minBodyWidth: 364).bodyWidth == expected)
     }
 
-    // Con el Pomodoro y la taza a la izquierda, cada lado deja el ancho de los dos botones (26 + 4 + 26), para que las
-    // alas sigan centradas aunque a la derecha solo esté el engranaje
-    @Test func bothLeftButtonsReserveTheirWidthOnEachSide() {
+    // Con las tres píldoras a la izquierda (3 × 26 + 2 × 4 = 86) y la taza y el engranaje a la derecha (56), cada
+    // lado deja el ancho del mayor, para que las alas sigan centradas
+    @Test func theWiderCornerReservesItsWidthOnEachSide() {
         let spaces = [summary(1, apps: 0, focused: true)]
         let layout = IslandExpandedLayout(
-            spaces: spaces, minBodyWidth: 364, maxBodyWidth: 2000, topHeight: 38,
-            hasKeepAwake: true, hasPomodoroButton: true, hasSettingsButton: true
+            spaces: spaces, minBodyWidth: 364, maxBodyWidth: 2000, topHeight: 38, tabs: IslandTab.allCases,
+            hasKeepAwake: true, hasSettingsButton: true
         )
-        let expected: CGFloat = 364 + 2 * (56 + 14)
+        let expected: CGFloat = 364 + 2 * (86 + 14)
         #expect(layout.bodyWidth == expected)
+        // Sin pestañas, solo cuentan la taza y el engranaje (26 + 4 + 26)
+        let withoutTabs = IslandExpandedLayout(
+            spaces: spaces, minBodyWidth: 364, maxBodyWidth: 2000, topHeight: 38, hasKeepAwake: true, hasSettingsButton: true
+        )
+        let narrower: CGFloat = 364 + 2 * (56 + 14)
+        #expect(withoutTabs.bodyWidth == narrower)
     }
 
-    @Test func theGearSitsInTheTopRightCorner() {
+    @Test func theGearSitsNextToTheRightWing() {
         let spaces = (1...4).map { summary($0, apps: 0, focused: $0 == 1) }
         let layout = IslandExpandedLayout(
             spaces: spaces, minBodyWidth: 400, maxBodyWidth: 2000, topHeight: 38, hasSettingsButton: true
         )
-        #expect(layout.settingsButtonFrame(islandWidth: 618, topHeight: 38) == CGRect(x: 559, y: 6, width: 26, height: 26))
-        #expect(layout.control(at: CGPoint(x: 572, y: 19), islandWidth: 618, topHeight: 38) == .settings)
+        #expect(layout.settingsButtonFrame(islandWidth: 618, topHeight: 38) == CGRect(x: 509, y: 6, width: 26, height: 26))
+        #expect(layout.control(at: CGPoint(x: 522, y: 19), islandWidth: 618, topHeight: 38) == .settings)
     }
 
     @Test func noButtonWhenItIsOff() {

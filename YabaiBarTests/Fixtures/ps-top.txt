@@ -1,0 +1,12 @@
+  PID  %CPU    RSS COMM
+12341  23.4 672912 /Users/user/Library/Application Support/Claude/claude-code/2.1.321/ddbdf2b334e1/claude.app/Contents/MacOS/claude
+12890  16.1 2356464 /System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent
+  171  14.9 631808 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer
+  348   7.4  71968 /usr/sbin/coreaudiod
+12230   6.5 1066272 /Applications/Claude.app/Contents/Frameworks/Claude Helper (Renderer).app/Contents/MacOS/Claude Helper (Renderer)
+12864   4.8 190160 /System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.GPU.xpc/Contents/MacOS/com.apple.WebKit.GPU
+12188   1.4 541376 /Applications/Claude.app/Contents/MacOS/Claude
+12854   1.4 306144 /System/Volumes/Preboot/Cryptexes/App/System/Applications/Safari.app/Contents/MacOS/Safari
+  310   1.0  40880 /System/Library/DriverExtensions/com.apple.DriverKit-AppleBCMWLAN.dext/com.apple.DriverKit-AppleBCMWLAN
+  670   0.6  78624 Contents/Library/LoginItems/OpenLogi Agent.app/Contents/MacOS/openlogi-agent
+    1   0.3  36384 /sbin/launchd

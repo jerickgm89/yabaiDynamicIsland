@@ -90,7 +90,7 @@ app="$DERIVED/Build/Products/Release/$APP.app"
 step "Verificación"
 codesign --verify --deep --strict "$app" || fail "la firma no es válida"
 codesign -dr - "$app" 2>&1 | grep -q "certificate leaf" || fail "el requisito de firma no usa el certificado (¿firma ad-hoc?)"
-for binary in "$app/Contents/MacOS/$APP" "$app/Contents/Frameworks/MediaRemoteAdapter.framework/MediaRemoteAdapter"; do
+for binary in "$app/Contents/MacOS/$APP" "$app/Contents/Helpers/yb" "$app/Contents/Frameworks/MediaRemoteAdapter.framework/MediaRemoteAdapter"; do
   archs="$(lipo -archs "$binary")"
   [[ "$archs" == "arm64" ]] || fail "$(basename "$binary") es $archs, no solo arm64"
 done

@@ -7,6 +7,9 @@ struct SettingsTabView: View {
     let tab: SettingsWindow.Tab
     @Bindable var settings: AppSettings
     let launchAtLogin: LaunchAtLogin
+    let claude: ClaudeConnection
+    let calendar: CalendarStore
+    let clipboard: ClipboardStore
     let showWelcome: () -> Void
 
     var body: some View {
@@ -16,8 +19,292 @@ struct SettingsTabView: View {
         case .music: MusicSettings(settings: settings)
         case .pomodoro: PomodoroSettings(settings: settings)
         case .desktops: DesktopSettings(settings: settings)
+        case .utilities: UtilitySettings(settings: settings, calendar: calendar, clipboard: clipboard)
+        case .developer: DeveloperSettings(settings: settings, claude: claude)
         case .shortcuts: ShortcutSettings(settings: settings)
         case .about: AboutSettings()
+        }
+    }
+}
+
+// MARK: - Utilidades
+
+// El calendario de la pestaña Utilidades de la isla: el permiso, el aviso y qué calendarios se leen. El portapapeles y la bandeja
+// sumarán lo suyo en las fases 43 y 44
+private struct UtilitySettings: View {
+    @Bindable var settings: AppSettings
+    let calendar: CalendarStore
+    let clipboard: ClipboardStore
+
+    var body: some View {
+        Form {
+            clipboardSection
+            Section {
+                LabeledContent("Acceso a Calendario") { accessLabel }
+                accessButton
+                Toggle("Avisar 5 minutos antes de cada evento", isOn: $settings.calendarNotice)
+                    .disabled(calendar.access != .granted)
+            } header: {
+                Text("Calendario")
+            } footer: {
+                Text("La isla lee los eventos de la app Calendario (iCloud, Google y las demás cuentas que tengas allí) para enseñarte los del día en la pestaña Utilidades y avisarte antes de cada uno. Solo los lee: no los guarda ni los manda a ningún sitio, y los títulos no van a los registros. macOS pide el permiso una sola vez; si lo negaste, se cambia en Ajustes del Sistema › Privacidad y seguridad › Calendarios.")
+                    .foregroundStyle(.secondary)
+            }
+            if calendar.access == .granted, !calendar.calendars.isEmpty {
+                Section {
+                    ForEach(calendar.calendars) { info in
+                        Toggle(isOn: binding(for: info.id)) {
+                            HStack(spacing: 8) {
+                                Circle()
+                                    .fill(Color(red: info.color.red, green: info.color.green, blue: info.color.blue))
+                                    .frame(width: 9, height: 9)
+                                Text(info.title)
+                                if !info.account.isEmpty {
+                                    Text(info.account).foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Calendarios que se ven")
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .onAppear { calendar.reload() }
+    }
+
+    // El historial del portapapeles: apagado hasta que se enciende, porque macOS pregunta antes de dejar que una app lea el
+    // portapapeles sin que pegues. Las herramientas y el selector de color funcionan sin él
+    @ViewBuilder private var clipboardSection: some View {
+        Section {
+            Toggle("Guardar un historial de lo que copio", isOn: Binding(
+                get: { settings.clipboardHistory },
+                set: { on in
+                    if on { clipboard.requestAccess() } else { settings.clipboardHistory = false }
+                }
+            ))
+            if settings.clipboardHistory {
+                LabeledContent("Permiso de macOS") { clipboardAccessLabel }
+                if clipboard.state == .needsAllow || clipboard.state == .denied {
+                    Button("Abrir Ajustes del Sistema…") { clipboard.openPrivacySettings() }
+                } else if clipboard.state == .needsFirstAccess {
+                    Button("Dar acceso…") { clipboard.requestAccess() }
+                }
+                Toggle("Guardar el historial en el disco", isOn: $settings.clipboardPersist)
+                Button("Borrar el historial") { clipboard.clearHistory() }
+                    .disabled(clipboard.history.entries.isEmpty)
+                DisclosureGroup("Apps que no se guardan (\(settings.clipboardIgnoredApps.count))") {
+                    ForEach(settings.clipboardIgnoredApps, id: \.self) { id in
+                        HStack {
+                            Text(id).font(.callout).lineLimit(1).truncationMode(.middle)
+                            Spacer()
+                            Button {
+                                settings.clipboardIgnoredApps.removeAll { $0 == id }
+                            } label: {
+                                Image(systemName: "minus.circle")
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                    }
+                    HStack {
+                        Button("Añadir app…", action: addIgnoredApp)
+                        Button("Restaurar la lista") { settings.clipboardIgnoredApps = ClipboardFilter.defaultIgnoredApps }
+                    }
+                }
+            }
+        } header: {
+            Text("Portapapeles")
+        } footer: {
+            Text("Las herramientas de la isla (JSON, base64, URL, JWT, UUID, timestamp y SHA-256) y el cuentagotas funcionan siempre: leen el portapapeles solo cuando pulsas un botón. El historial apunta todo lo que copias: está apagado hasta que lo enciendes, vive en memoria (20 copias, 6 a la vista) y no guarda lo que las apps marcan como oculto (las contraseñas) ni lo de las apps de la lista. macOS pregunta antes de dejar que una app lea el portapapeles sin que pegues: para que el historial siga solo, elige «Permitir» para YabaiBar en Ajustes del Sistema › Privacidad y seguridad › Pegar desde otras apps. Guardarlo en disco deja un archivo con lo que copiaste en ~/Library/Application Support/YabaiBar, solo legible por ti.")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder private var clipboardAccessLabel: some View {
+        switch clipboard.state {
+        case .recording: Label("Permitido", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+        case .needsFirstAccess: Text("Sin pedir").foregroundStyle(.secondary)
+        case .needsAllow: Label("Pregunta cada vez: elige «Permitir»", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+        case .denied: Label("Denegado", systemImage: "xmark.octagon.fill").foregroundStyle(.red)
+        case .off: EmptyView()
+        }
+    }
+
+    /// Una app de la lista: se elige la `.app` y se guarda su identificador
+    private func addIgnoredApp() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.application]
+        panel.directoryURL = URL(filePath: "/Applications")
+        panel.allowsMultipleSelection = true
+        panel.prompt = "No guardar"
+        panel.message = "Elige las apps de las que no se guardará lo que copies."
+        guard panel.runModal() == .OK else { return }
+        for url in panel.urls {
+            guard let id = Bundle(url: url)?.bundleIdentifier, BundleIdentifier.isValid(id), !settings.clipboardIgnoredApps.contains(id) else { continue }
+            settings.clipboardIgnoredApps.append(id)
+        }
+    }
+
+    @ViewBuilder private var accessLabel: some View {
+        switch calendar.access {
+        case .granted: Label("Concedido", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+        case .notDetermined: Text("Sin pedir").foregroundStyle(.secondary)
+        case .denied: Label("Denegado", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+        }
+    }
+
+    @ViewBuilder private var accessButton: some View {
+        switch calendar.access {
+        case .granted: EmptyView()
+        case .notDetermined: Button("Dar acceso…") { Task { await calendar.requestAccess() } }
+        case .denied: Button("Abrir Ajustes del Sistema…") { calendar.openPrivacySettings() }
+        }
+    }
+
+    // Visto o no: se guarda lo que se excluye, así un calendario nuevo se ve desde el principio
+    private func binding(for id: String) -> Binding<Bool> {
+        Binding(
+            get: { !settings.calendarExcluded.contains(id) },
+            set: { visible in
+                if visible {
+                    settings.calendarExcluded.removeAll { $0 == id }
+                } else if !settings.calendarExcluded.contains(id) {
+                    settings.calendarExcluded.append(id)
+                }
+            }
+        )
+    }
+}
+
+// MARK: - Desarrollador
+
+// Los módulos de la pestaña Desarrollador de la isla que se pueden apagar. Se irán sumando con cada módulo
+private struct DeveloperSettings: View {
+    @Bindable var settings: AppSettings
+    let claude: ClaudeConnection
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Mostrar los contenedores de Docker", isOn: $settings.showDocker)
+                Toggle("Mostrar Git y GitHub", isOn: $settings.showGit)
+            } header: {
+                Text("Módulos")
+            } footer: {
+                Text("Con un módulo apagado, desaparece de la pestaña Desarrollador y no se consulta nada. Cerrar un proceso o parar un contenedor siempre pide confirmación antes.")
+                    .foregroundStyle(.secondary)
+            }
+            gitSection
+            terminalSection
+            claudeSection
+        }
+        .formStyle(.grouped)
+        .onAppear { claude.refresh() }
+    }
+
+    // Qué repositorios se vigilan y qué avisa la isla cerrada. Solo informa: YabaiBar nunca hace commit, push, fetch ni crea etiquetas
+    @ViewBuilder private var gitSection: some View {
+        Section {
+            if settings.gitFolders.isEmpty {
+                Text("Solo los repositorios de las sesiones de Claude Code abiertas.").foregroundStyle(.secondary)
+            }
+            ForEach(settings.gitFolders, id: \.self) { folder in
+                HStack {
+                    Text((folder as NSString).abbreviatingWithTildeInPath)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer()
+                    Button {
+                        settings.gitFolders.removeAll { $0 == folder }
+                    } label: {
+                        Image(systemName: "minus.circle")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Dejar de vigilar esta carpeta")
+                }
+            }
+            Button("Añadir carpeta…", action: addFolder)
+            Toggle("Consultar GitHub con gh", isOn: $settings.gitUseGitHub)
+            Toggle("Avisar de commits sin subir", isOn: $settings.gitNoticeUnpushed)
+            Picker("…tras", selection: $settings.gitUnpushedMinutes) {
+                ForEach(AppSettings.gitUnpushedMinutesOptions, id: \.self) { Text("\($0) min").tag($0) }
+            }
+            .disabled(!settings.gitNoticeUnpushed)
+            Toggle("Avisar de cambios sin commit cuando Claude termina", isOn: $settings.gitNoticeUncommitted)
+            Toggle("Avisar de una etiqueta sin release", isOn: $settings.gitNoticeUnreleased)
+            Toggle("Avisar cuando termina el CI de un push", isOn: $settings.gitNoticeCI)
+        } header: {
+            Text("Git y GitHub")
+        } footer: {
+            Text("El módulo vigila, con el sistema y sin leer nada mientras no cambia, los repositorios de las sesiones de Claude Code abiertas y las carpetas que añadas. Solo informa: nunca hace commit, push, fetch ni crea etiquetas. GitHub se consulta con la sesión de gh, que no se copia en ningún sitio: las releases, el CI del último push y los PR abiertos. Si gh falla (sin red o sin sesión), el módulo no dice nada de eso en vez de adivinarlo.")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    // Los avisos de la terminal los manda `yb` desde unos hooks de zsh que el usuario carga desde ~/.zshrc: YabaiBar no toca ese
+    // archivo, solo da la línea para copiarla
+    @ViewBuilder private var terminalSection: some View {
+        Section {
+            Toggle("Avisar cuando termina un comando largo", isOn: $settings.terminalNotices)
+            Picker("…si tarda más de", selection: $settings.terminalMinSeconds) {
+                ForEach(AppSettings.terminalMinSecondsOptions, id: \.self) { Text("\($0) s").tag($0) }
+            }
+            .disabled(!settings.terminalNotices)
+            Toggle("Avisar aunque la terminal esté delante", isOn: $settings.terminalWhenFrontmost)
+                .disabled(!settings.terminalNotices)
+            LabeledContent("En ~/.zshrc") {
+                Button("Copiar la línea") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(ZshHook.initLine(executable: ClaudeConnection.helperPath), forType: .string)
+                }
+            }
+        } header: {
+            Text("Terminal")
+        } footer: {
+            Text("Pega la línea en ~/.zshrc y abre una terminal nueva: al volver al prompt tras un comando largo, zsh se lo avisa a YabaiBar con yb (YB_AVISO_MIN cambia los segundos en la shell y el mínimo de arriba también cuenta: manda el más alto. YB_AVISO_IGNORE sustituye la lista de programas que no avisan, y YB_AVISO_IGNORE_EXTRA le añade; vim, ssh, tail, claude y similares ya no avisan). Solo viaja el nombre del programa, el código de salida y lo que tardó, nunca la línea entera. YabaiBar no toca tu ~/.zshrc. Desde un script, «yb aviso \"título\" \"detalle\" --ok» enseña un aviso a mano. Con yb en el PATH (el cask de Homebrew lo enlaza) la línea queda como eval \"$(yb shell-init zsh)\".")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func addFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = true
+        panel.prompt = "Vigilar"
+        panel.message = "Elige carpetas que sean un repositorio de git (o estén dentro de uno)."
+        guard panel.runModal() == .OK else { return }
+        for url in panel.urls where !settings.gitFolders.contains(url.path) { settings.gitFolders.append(url.path) }
+    }
+
+    // Las sesiones abiertas se ven sin configurar nada. Los avisos de «Claude pregunta» necesitan los hooks en el settings.json
+    // de Claude Code, y esos solo se añaden desde aquí, con una confirmación
+    private var claudeSection: some View {
+        Section {
+            LabeledContent("Avisos de preguntas") {
+                switch claude.status {
+                case .connected: Label("Conectado", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                case .outdated: Label("Hay que volver a conectar", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                case .notConnected: Text("Sin conectar").foregroundStyle(.secondary)
+                case nil: Text("…").foregroundStyle(.secondary)
+                }
+            }
+            HStack {
+                Button(claude.status == .outdated ? "Volver a conectar…" : "Conectar con Claude Code…") { claude.connect() }
+                    .disabled(claude.status == .connected)
+                Button("Quitar los hooks…") { claude.disconnect() }
+                    .disabled(claude.status == .notConnected || claude.status == nil)
+            }
+            if let error = claude.lastError {
+                Text(error).foregroundStyle(.red).font(.callout)
+            }
+            Toggle("Avisar cuando Claude termine algo largo", isOn: $settings.claudeNotifyFinished)
+        } header: {
+            Text("Claude Code")
+        } footer: {
+            Text("La isla enseña las sesiones abiertas leyendo ~/.claude/sessions. Para avisarte cuando Claude te pregunta algo, YabaiBar añade cinco hooks a ~/.claude/settings.json: mandan el nombre del evento, el id y la carpeta de la sesión y, en una pregunta, lo que Claude Code dice, nunca lo que escribes ni lo que responde Claude. Antes de tocar el archivo se guarda una copia (el archivo se reescribe entero, con las claves ordenadas), y «Quitar» solo borra lo que añadió YabaiBar. Las sesiones que ya estaban abiertas necesitan reiniciarse para leer los hooks nuevos. No se ven los chats normales de la app de Claude, solo las sesiones de Claude Code.")
+                .foregroundStyle(.secondary)
         }
     }
 }
@@ -107,7 +394,7 @@ private struct IslandSettings: View {
                     PartCard(title: "Taza", symbol: "cup.and.saucer.fill", color: .orange, isOn: $settings.keepAwakeButton)
                 }
             } header: {
-                Text("En la isla abierta")
+                Text("En la isla abierta, pestaña Utilidades")
             } footer: {
                 Text("Música: lo que suena. Pomodoro: foco y descansos (apagarlo termina la sesión). Taza: el Mac no se duerme mientras la tengas encendida.")
                     .foregroundStyle(.secondary)
@@ -157,8 +444,8 @@ private struct PartCard: View {
     }
 }
 
-// Una isla abierta en miniatura con lo que está activado: los botones de arriba, las tarjetas y la fila de la música
-// y el Pomodoro. No es la isla real: solo enseña qué partes se ven
+// La pestaña Utilidades de la isla abierta en miniatura con lo que está activado: las píldoras de las pestañas, la taza
+// y el engranaje de arriba, y la fila de la música y el Pomodoro. No es la isla real: solo enseña qué partes se ven
 private struct IslandPreview: View {
     let music: Bool
     let pomodoro: Bool
@@ -169,24 +456,18 @@ private struct IslandPreview: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(red: 0.16, green: 0.43, blue: 0.42))
             VStack(spacing: 8) {
                 HStack(spacing: 8) {
-                    if pomodoro { Image(systemName: "timer").foregroundStyle(IslandView.focusColor) }
-                    if cup { Image(systemName: "cup.and.saucer.fill").foregroundStyle(.white.opacity(0.6)) }
+                    ForEach(IslandTab.allCases, id: \.self) { tab in
+                        Image(systemName: tab.symbol)
+                            .foregroundStyle(.white.opacity(tab == .utilities ? 1 : 0.6))
+                            .frame(width: 20, height: 20)
+                            .background(Circle().fill(.white.opacity(tab == .utilities ? 0.2 : 0)))
+                    }
                     Spacer()
+                    if cup { Image(systemName: "cup.and.saucer.fill").foregroundStyle(.white.opacity(0.6)) }
                     Image(systemName: "gearshape.fill").foregroundStyle(.white.opacity(0.6))
                 }
                 .font(.system(size: 12, weight: .semibold))
-                .frame(height: 16)
-                HStack(spacing: 6) {
-                    ForEach(0..<4, id: \.self) { index in
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(.white.opacity(0.08))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .strokeBorder(index == 1 ? Color.green.opacity(0.8) : .clear, lineWidth: 1.5)
-                            )
-                    }
-                }
-                .frame(height: 30)
+                .frame(height: 20)
                 if music || pomodoro {
                     HStack(spacing: 12) {
                         if music {
@@ -226,7 +507,19 @@ private struct IslandPreview: View {
                         }
                     }
                     .frame(height: 46)
+                } else {
+                    Text("No suena nada ahora")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.55))
+                        .frame(height: 46)
                 }
+                // La segunda fila: el calendario, el portapapeles y la bandeja, que llegan en próximas versiones
+                HStack(spacing: 6) {
+                    ForEach(0..<3, id: \.self) { _ in
+                        RoundedRectangle(cornerRadius: 6, style: .continuous).fill(.white.opacity(0.08))
+                    }
+                }
+                .frame(height: 22)
             }
             .foregroundStyle(.white)
             .padding(.horizontal, 14)

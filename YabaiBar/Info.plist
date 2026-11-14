@@ -35,5 +35,9 @@
 	<string>public.app-category.utilities</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>YabaiBar lee tus eventos de Calendario para enseñarte los de hoy en la isla y avisarte 5 minutos antes de cada uno. No los guarda ni los manda a ningún sitio.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>YabaiBar lee tus eventos de Calendario para enseñarte los de hoy en la isla y avisarte 5 minutos antes de cada uno. No los guarda ni los manda a ningún sitio.</string>
 </dict>
 </plist>

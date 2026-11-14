@@ -92,38 +92,49 @@ struct NowPlayingTests {
     }
 }
 
-// Cuatro espacios: cuerpo de 580 pt (isla de 618 con las esquinas) y fila de 552 pt que empieza en x = 33 y va de
-// y = 126 a 222. Sola, la música ocupa toda la fila: la carátula en 33–119 y los botones a la derecha, centrados en
-// alto (y = 159–189): anterior en 483–513, reproducir en 519–549 y siguiente en 555–585
+// Utilidades con cuatro espacios: cuerpo de 760 pt (isla de 798 con las esquinas) y fila de 732 pt que empieza en
+// x = 33 y va de y = 46 (justo bajo la franja del notch y su hueco) a 142. Sola, la música ocupa toda la fila: la
+// carátula en 33–119 y los botones a la derecha, centrados en alto (y = 79–109): anterior en 663–693, reproducir en
+// 699–729 y siguiente en 735–765
 struct MediaStripLayoutTests {
-    private func layout(hasMedia: Bool = true) -> IslandExpandedLayout {
+    private func layout(hasMedia: Bool = true, tab: IslandTab = .utilities) -> IslandExpandedLayout {
         let spaces = (1...4).map { SpaceSummary(index: $0, isFocused: $0 == 1, apps: []) }
-        return IslandExpandedLayout(spaces: spaces, minBodyWidth: 400, maxBodyWidth: 2000, topHeight: 38, hasMedia: hasMedia)
+        return IslandExpandedLayout(
+            spaces: spaces, minBodyWidth: 400, maxBodyWidth: 2000, topHeight: 38, tab: tab, hasMedia: hasMedia
+        )
     }
 
-    private func control(_ x: CGFloat, _ y: CGFloat = 174, hasMedia: Bool = true) -> IslandExpandedLayout.Control? {
-        layout(hasMedia: hasMedia).control(at: CGPoint(x: x, y: y), islandWidth: 618, topHeight: 38)
+    private func control(
+        _ x: CGFloat, _ y: CGFloat = 94, hasMedia: Bool = true, tab: IslandTab = .utilities
+    ) -> IslandExpandedLayout.Control? {
+        layout(hasMedia: hasMedia, tab: tab).control(at: CGPoint(x: x, y: y), islandWidth: 798, topHeight: 38)
     }
 
-    @Test func theRowMakesTheIslandTaller() {
-        #expect(layout(hasMedia: false).height == 130)
-        #expect(layout().height == 236)
-        #expect(layout().mediaWidth == 552)
-        #expect(layout().musicSection == CGRect(x: 0, y: 0, width: 552, height: 96))
+    // La fila es lo primero de Utilidades y siempre está, haya música o no; en Escritorios no hay fila
+    @Test func theRowBelongsToTheUtilitiesTab() {
+        #expect(layout(hasMedia: false).height == 278)
+        #expect(layout().height == 278)
+        #expect(layout(tab: .desktops).height == 130)
+        #expect(layout().mediaWidth == 732)
+        #expect(layout().musicSection == CGRect(x: 0, y: 0, width: 732, height: 96))
+        #expect(layout(tab: .desktops).musicSection == nil)
     }
 
     @Test func findsEachControl() {
-        #expect(control(60, 150) == .artwork)
-        #expect(control(498) == .previous)
-        #expect(control(534) == .playPause)
-        #expect(control(570) == .next)
+        #expect(control(60, 90) == .artwork)
+        #expect(control(678) == .previous)
+        #expect(control(714) == .playPause)
+        #expect(control(750) == .next)
     }
 
     @Test func textAndOutsideAreNotControls() {
         #expect(control(300) == nil)
         #expect(control(20) == nil)
-        #expect(control(534, 120) == nil)
-        #expect(control(534, 200) == nil)
-        #expect(control(534, hasMedia: false) == nil)
+        #expect(control(714, 44) == nil)
+        #expect(control(714, 150) == nil)
+        #expect(control(714, hasMedia: false) == nil)
+        // En otra pestaña, los botones de la música no están
+        #expect(control(714, tab: .desktops) == nil)
+        #expect(control(714, tab: .developer) == nil)
     }
 }

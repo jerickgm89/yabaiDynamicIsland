@@ -16,8 +16,9 @@ final class IslandPanel: NSPanel {
         hidesOnDeactivate = false
         isMovable = false
         isReleasedWhenClosed = false
-        // El aviso de los atajos de escritorio (DesktopShortcutAssistant) es modal: sin esto, mientras está abierto
-        // la isla no recibiría clics
+        // El aviso de los atajos de escritorio (DesktopShortcutAssistant) y las preguntas de Desarrollador (cerrar un
+        // proceso, parar un contenedor, conectar los hooks) son modales: sin esto, mientras están abiertos la isla no
+        // recibiría clics. De ahí `DevTools.isAsking`, que evita apilar una segunda pregunta
         worksWhenModal = true
     }
 

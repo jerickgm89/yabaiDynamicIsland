@@ -64,33 +64,61 @@ struct IslandSizesTests {
         }
     }
 
-    // Abierta, con todo (Pomodoro, música y los dos botones de las esquinas): deja 30 pt a cada lado, las tarjetas
-    // no bajan de un mínimo y cabe en el lienzo
+    // Abierta en cada pestaña, con todo (Pomodoro, música, las tres píldoras y los dos botones de la derecha): deja
+    // 30 pt a cada lado, las tarjetas no bajan de un mínimo, cabe en el lienzo, y las píldoras y los botones no tapan
+    // las alas del notch
     @Test func openIslandFitsWithTheAtollMargin() {
         for (screenWidth, notch, count) in Self.everyCase {
             let geometry = Self.geometry(screenWidth: screenWidth, notch: notch)
             let spaces = Self.spaces(count)
             let layout = IslandLayout(spaces: spaces, statusItems: IslandLayout.StatusItem.allCases)
-            let expanded = IslandExpandedLayout(
-                spaces: spaces, minBodyWidth: geometry.centerWidth + 2 * layout.wingWidth,
-                maxBodyWidth: IslandExpandedLayout.maxBodyWidth(screenWidth: screenWidth, topRadius: IslandView.openTopRadius),
-                topHeight: notch.height, hasMedia: true, hasKeepAwake: true, hasPomodoro: true, hasPomodoroButton: true,
-                hasSettingsButton: true
-            )
-            let islandWidth = expanded.bodyWidth + 2 * IslandView.openTopRadius
-            let label = "\(screenWidth) \(notch) \(count)"
-            #expect(islandWidth <= screenWidth - 2 * IslandExpandedLayout.screenMargin, "\(label)")
-            #expect(expanded.cardWidth >= Self.minCardWidth, "\(label)")
-            #expect(expanded.height + IslandController.shadowMargin <= IslandController.canvasHeight, "\(label)")
-            // Cada parte de la fila compartida tiene su mínimo, y sus botones no se salen de ella
-            for (section, controls) in [
-                (expanded.musicSection, IslandExpandedLayout.controls),
-                (expanded.pomodoroSection, IslandExpandedLayout.pomodoroControls),
-            ] {
-                guard let section else { continue }
-                #expect(section.width >= IslandExpandedLayout.minSharedSection, "\(label)")
-                for item in expanded.controlFrames(controls, in: section) {
-                    #expect(item.frame.maxX <= section.maxX, "\(label)")
+            for tab in IslandTab.allCases {
+                let expanded = IslandExpandedLayout(
+                    spaces: spaces, minBodyWidth: geometry.centerWidth + 2 * layout.wingWidth,
+                    maxBodyWidth: IslandExpandedLayout.maxBodyWidth(screenWidth: screenWidth, topRadius: IslandView.openTopRadius),
+                    topHeight: notch.height, tab: tab, tabs: IslandTab.allCases, hasMedia: true, hasKeepAwake: true,
+                    hasPomodoro: true, hasSettingsButton: true
+                )
+                let islandWidth = expanded.bodyWidth + 2 * IslandView.openTopRadius
+                let label = "\(screenWidth) \(notch) \(count) \(tab)"
+                #expect(islandWidth <= screenWidth - 2 * IslandExpandedLayout.screenMargin, "\(label)")
+                // Las tarjetas solo se dibujan en Escritorios: en las otras pestañas su ancho no cuenta
+                if tab == .desktops { #expect(expanded.cardWidth >= Self.minCardWidth, "\(label)") }
+                #expect(expanded.height + IslandController.shadowMargin <= IslandController.canvasHeight, "\(label)")
+                // Las alas van centradas en el notch: las píldoras acaban antes de la izquierda y los botones de la
+                // derecha empiezan después de la derecha
+                let wingsLeft = (islandWidth - geometry.centerWidth) / 2 - layout.wingWidth
+                let wingsRight = (islandWidth + geometry.centerWidth) / 2 + layout.wingWidth
+                let pills = expanded.tabFrames(islandWidth: islandWidth, topHeight: notch.height)
+                #expect(pills.count == IslandTab.allCases.count, "\(label)")
+                #expect((pills.last?.frame.maxX ?? 0) <= wingsLeft + 0.001, "\(label)")
+                // Y siguen dentro de la isla, con su margen, también en la pestaña más estrecha
+                #expect((pills.first?.frame.minX ?? 0) >= IslandView.openTopRadius + IslandExpandedLayout.padding - 0.001, "\(label)")
+                let rightButtons = [
+                    expanded.keepAwakeFrame(islandWidth: islandWidth, topHeight: notch.height),
+                    expanded.settingsButtonFrame(islandWidth: islandWidth, topHeight: notch.height),
+                ].compactMap { $0 }
+                #expect(rightButtons.count == 2, "\(label)")
+                for frame in rightButtons {
+                    #expect(frame.minX >= wingsRight - 0.001, "\(label)")
+                    #expect(frame.maxX <= islandWidth - IslandView.openTopRadius - IslandExpandedLayout.padding + 0.001, "\(label)")
+                }
+                // Cada parte de la fila compartida tiene su mínimo, y sus botones no se salen de ella
+                for (section, controls) in [
+                    (expanded.musicSection, IslandExpandedLayout.controls),
+                    (expanded.pomodoroSection, IslandExpandedLayout.pomodoroControls),
+                ] {
+                    guard let section else { continue }
+                    #expect(section.width >= IslandExpandedLayout.minSharedSection, "\(label)")
+                    for item in expanded.controlFrames(controls, in: section) {
+                        #expect(item.frame.maxX <= section.maxX, "\(label)")
+                    }
+                }
+                // Los módulos caben a lo ancho de su zona, y la rejilla de Desarrollador entra en el alto de la isla
+                let modules = tab == .developer ? expanded.developerGrid : tab == .utilities ? expanded.utilityModules : nil
+                for cell in modules?.cells ?? [] {
+                    #expect(cell.frame.minX >= 0 && cell.frame.maxX <= expanded.mediaWidth + 0.001, "\(label)")
+                    #expect(cell.frame.width >= 100, "\(label)")
                 }
             }
         }
@@ -136,18 +164,19 @@ struct IslandSizesTests {
         #expect(IslandLayout.contentScale(forHeight: 38) == 1)
     }
 
-    // Los botones de las esquinas de la isla abierta caben en la franja del notch
+    // Las píldoras y los botones de las esquinas de la isla abierta caben en la franja del notch
     @Test func cornerButtonsFitTheNotchRow() throws {
         for height in Self.notchHeights {
             let expanded = IslandExpandedLayout(
                 spaces: Self.spaces(4), minBodyWidth: 400, maxBodyWidth: 1200, topHeight: height,
-                hasKeepAwake: true, hasPomodoroButton: true
+                tabs: IslandTab.allCases, hasKeepAwake: true, hasSettingsButton: true
             )
-            for frame in [
-                expanded.keepAwakeFrame(islandWidth: 900, topHeight: height),
-                expanded.pomodoroButtonFrame(islandWidth: 900, topHeight: height),
-            ] {
-                let frame = try #require(frame)
+            let frames = expanded.tabFrames(islandWidth: 900, topHeight: height).map(\.frame) + [
+                try #require(expanded.keepAwakeFrame(islandWidth: 900, topHeight: height)),
+                try #require(expanded.settingsButtonFrame(islandWidth: 900, topHeight: height)),
+            ]
+            #expect(frames.count == 5)
+            for frame in frames {
                 #expect(frame.minY >= 0 && frame.maxY <= height, "\(height)")
             }
         }

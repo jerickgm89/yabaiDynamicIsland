@@ -4,19 +4,32 @@ import Foundation
 // indicadores al final (la música y mantener despierto). Las dos alas miden lo mismo (lo que necesite la más
 // ancha), dentro de un mínimo y un máximo.
 struct IslandLayout: Equatable {
-    /// Lo que va al final del ala derecha, siempre en este orden: el anillo del Pomodoro, al borde
+    /// Lo que va al final del ala derecha, siempre en este orden: el anillo del Pomodoro, al borde. `utilities` y
+    /// `developer` son el ícono de esa pestaña con el punto de una novedad (ver `TabBadge`)
     enum StatusItem: Hashable, CaseIterable {
-        case music, keepAwake, pomodoro
+        case music, keepAwake, utilities, developer, pomodoro
 
         var width: CGFloat {
             switch self {
             case .music: IslandLayout.musicIndicatorWidth
             // La taza es algo más ancha que alta
             case .keepAwake: 14
+            case .utilities, .developer: IslandLayout.tabIndicatorWidth
             case .pomodoro: IslandLayout.pomodoroRingSize
             }
         }
+
+        /// La pestaña de un indicador de novedades
+        var tab: IslandTab? {
+            switch self {
+            case .utilities: .utilities
+            case .developer: .developer
+            case .music, .keepAwake, .pomodoro: nil
+            }
+        }
     }
+
+    static let tabIndicatorWidth: CGFloat = 14
 
     static let pomodoroRingSize: CGFloat = 12
 
@@ -91,10 +104,15 @@ struct IslandLayout: Equatable {
     }
 }
 
-// Geometría pura de la isla abierta: en la franja del notch, los botones de las esquinas (el Pomodoro y la taza a la
-// izquierda, el engranaje a la derecha); debajo, una tarjeta por espacio en una fila, y debajo, la fila de la música y
-// el Pomodoro. Nunca es más estrecha que la isla cerrada y, si hay muchos
-// espacios, las tarjetas se estrechan.
+// Geometría pura de la isla abierta: en la franja del notch, las alas de siempre (el escritorio activo y los demás),
+// las píldoras de las pestañas pegadas a la izquierda de las alas y la taza y el engranaje a su derecha; debajo, el
+// contenido de la pestaña elegida. La franja es la misma en las tres pestañas, centrada en el notch: las píldoras no se
+// mueven al cambiar de pestaña, aunque el cuerpo de debajo mida otra cosa.
+// - Escritorios: una tarjeta por espacio en una fila;
+// - Utilidades: la fila de la música y el Pomodoro, y debajo la de los módulos (calendario, portapapeles y bandeja);
+// - Desarrollador: una rejilla de módulos.
+// Cada pestaña tiene su alto y su ancho. Nunca es más estrecha que la isla cerrada y, si hay muchos espacios, las
+// tarjetas se estrechan.
 struct IslandExpandedLayout: Equatable {
     static let cardWidth: CGFloat = 132
     static let cardHeight: CGFloat = 70
@@ -144,23 +162,51 @@ struct IslandExpandedLayout: Equatable {
     static let minSingleRow: CGFloat = 330
     static let controls: [Control] = [.previous, .playPause, .next]
 
-    /// Los botones de las esquinas, a la altura del notch: el Pomodoro y la taza a la izquierda, y el engranaje de
-    /// los ajustes a la derecha
+    /// Los botones de las esquinas, a la altura del notch: las píldoras de las pestañas a la izquierda, y la taza y el
+    /// engranaje de los ajustes a la derecha
     static let cornerButtonSize: CGFloat = 26
     static let cornerButtonSpacing: CGFloat = 4
     static let pomodoroControls: [Control] = [.pomodoroPlayPause, .pomodoroSkip, .pomodoroStop]
 
-    /// Los botones de la isla abierta: los de la música, los del Pomodoro y los de las esquinas
+    // Los módulos de Utilidades (la segunda fila) y de Desarrollador (la rejilla)
+    static let moduleHeight: CGFloat = 112
+    static let moduleSpacing: CGFloat = 10
+    /// Lo que mide el cuerpo con cada una de esas pestañas, si la pantalla da para tanto
+    static let utilitiesBodyWidth: CGFloat = 760
+    static let developerBodyWidth: CGFloat = 770
+    static let developerColumns = 3
+    /// En la segunda fila de Utilidades, el calendario y el portapapeles; la bandeja ocupa lo que sobra
+    static let utilityRowWidths: [CGFloat] = [310, 250]
+
+    /// Los botones de la isla abierta: las pestañas, los de la música, los del Pomodoro y los de las esquinas
     enum Control: Hashable {
+        case tab(IslandTab)
+        /// Un botón de una fila de Puertos o Docker
+        case module(ModuleControl)
+        /// Algo del módulo Calendario: un día, un evento, «Unirse»…
+        case calendar(CalendarControl)
+        /// Algo del módulo Portapapeles: una copia, una herramienta, el cuentagotas…
+        case clipboard(ClipboardControl)
         case artwork, previous, playPause, next, keepAwake, settings
-        case pomodoroToggle, pomodoroPlayPause, pomodoroSkip, pomodoroStop
+        case pomodoroPlayPause, pomodoroSkip, pomodoroStop
     }
 
     let spaces: [SpaceSummary]
+    /// Lo que ocupan el notch y las alas, centrado en la isla: las píldoras y los botones se pegan a sus lados
+    let stripWidth: CGFloat
+    /// Lo que reserva a cada lado el grupo de botones de esa esquina
+    let leftCornerWidth: CGFloat
+    let rightCornerWidth: CGFloat
+    /// La pestaña que se ve, y las que tienen píldora: con una sola no se dibujan
+    let tab: IslandTab
+    let tabs: [IslandTab]
+    let developerModules: [ModuleID]
     let hasMedia: Bool
     let hasKeepAwake: Bool
+    /// El Pomodoro tiene su parte en la fila de Utilidades, haya sesión o no
     let hasPomodoro: Bool
-    let hasPomodoroButton: Bool
+    /// Sin sesión, solo tiene el botón de empezar
+    let pomodoroIdle: Bool
     let hasSettingsButton: Bool
     /// Ancho del cuerpo, sin las esquinas superiores cóncavas
     let bodyWidth: CGFloat
@@ -194,38 +240,61 @@ struct IslandExpandedLayout: Equatable {
         min(cornerButtonSize, topHeight - 4)
     }
 
-    /// `minBodyWidth` es lo que ocupan el notch y las alas en la franja de arriba. Con algún botón en las esquinas,
-    /// el cuerpo deja sitio a cada lado para que no tapen las alas
+    /// `minBodyWidth` es lo que ocupan el notch y las alas en la franja de arriba. Con botones en las esquinas, el
+    /// cuerpo deja sitio a cada lado para que no tapen las alas
     init(
-        spaces: [SpaceSummary], minBodyWidth: CGFloat, maxBodyWidth: CGFloat, topHeight: CGFloat, hasMedia: Bool = false,
-        hasKeepAwake: Bool = false, hasPomodoro: Bool = false, hasPomodoroButton: Bool = false,
+        spaces: [SpaceSummary], minBodyWidth: CGFloat, maxBodyWidth: CGFloat, topHeight: CGFloat,
+        tab: IslandTab = .desktops, tabs: [IslandTab] = [.desktops],
+        developerModules: [ModuleID] = ModuleID.modules(of: .developer), hasMedia: Bool = false,
+        hasKeepAwake: Bool = false, hasPomodoro: Bool = false, pomodoroIdle: Bool = false,
         hasSettingsButton: Bool = false
     ) {
         self.spaces = spaces
+        stripWidth = minBodyWidth
+        self.tab = tab
+        self.tabs = tabs
+        self.developerModules = developerModules
         self.hasMedia = hasMedia
         self.hasKeepAwake = hasKeepAwake
         self.hasPomodoro = hasPomodoro
-        self.hasPomodoroButton = hasPomodoroButton
+        self.pomodoroIdle = pomodoroIdle
         self.hasSettingsButton = hasSettingsButton
         let count = CGFloat(spaces.count)
         let gaps = max(0, count - 1) * Self.cardSpacing
-        let natural = 2 * Self.padding + count * Self.cardWidth + gaps
+        let natural: CGFloat
+        let content: CGFloat
+        switch tab {
+        case .desktops:
+            natural = 2 * Self.padding + count * Self.cardWidth + gaps
+            content = Self.cardHeight
+        case .utilities:
+            natural = Self.utilitiesBodyWidth
+            content = Self.activityHeight + Self.activityGap + Self.moduleHeight
+        case .developer:
+            natural = Self.developerBodyWidth
+            content = ModuleGridLayout.height(
+                count: developerModules.count, columns: Self.developerColumns,
+                rowHeight: Self.moduleHeight, spacing: Self.moduleSpacing
+            )
+        }
         // Las alas van centradas en el notch: cada lado deja sitio a los botones del lado que más tenga
-        let left = Self.cornerWidth(buttons: (hasPomodoroButton ? 1 : 0) + (hasKeepAwake ? 1 : 0))
-        let right = Self.cornerWidth(buttons: hasSettingsButton ? 1 : 0)
+        let left = tabs.count > 1 ? Self.cornerWidth(buttons: tabs.count) : 0
+        let right = Self.cornerWidth(buttons: (hasKeepAwake ? 1 : 0) + (hasSettingsButton ? 1 : 0))
+        leftCornerWidth = left
+        rightCornerWidth = right
         let corner = max(left, right)
         var minimum = minBodyWidth + (corner > 0 ? 2 * (corner + Self.padding) : 0)
-        // La fila de la música y el Pomodoro necesita su sitio aunque haya pocos escritorios
-        if hasMedia && hasPomodoro {
-            minimum = max(minimum, 2 * Self.padding + 2 * Self.minSharedSection + 2 * Self.dividerGap)
-        } else if hasMedia || hasPomodoro {
-            minimum = max(minimum, 2 * Self.padding + Self.minSingleRow)
+        // La fila de la música y el Pomodoro necesita su sitio aunque la pantalla sea estrecha
+        if tab == .utilities {
+            if hasMedia && hasPomodoro {
+                minimum = max(minimum, 2 * Self.padding + 2 * Self.minSharedSection + 2 * Self.dividerGap)
+            } else if hasMedia || hasPomodoro {
+                minimum = max(minimum, 2 * Self.padding + Self.minSingleRow)
+            }
         }
         bodyWidth = min(max(minimum, natural), max(minimum, maxBodyWidth))
         cardWidth = count > 0 ? min(Self.cardWidth, (bodyWidth - 2 * Self.padding - gaps) / count) : 0
-        height = topHeight + Self.gapBelowNotch + Self.cardHeight
-            + (hasMedia || hasPomodoro ? Self.activityGap + Self.activityHeight : 0)
-            + Self.padding
+        height = topHeight + Self.gapBelowNotch + content + Self.padding
     }
 
     // Lo que ocupan varios botones de esquina seguidos
@@ -233,43 +302,74 @@ struct IslandExpandedLayout: Equatable {
         buttons > 0 ? CGFloat(buttons) * cornerButtonSize + CGFloat(buttons - 1) * cornerButtonSpacing : 0
     }
 
-    // El botón número `index` de la esquina izquierda, en coordenadas de la isla (origen arriba a la izquierda)
+    // El botón número `index` del grupo de la izquierda, pegado al borde izquierdo de las alas, en coordenadas de la
+    // isla (origen arriba a la izquierda)
     private func leftCornerFrame(_ index: Int, islandWidth: CGFloat, topHeight: CGFloat) -> CGRect {
         let size = Self.cornerButtonSize(topHeight: topHeight)
-        let x = (islandWidth - bodyWidth) / 2 + Self.padding + CGFloat(index) * (size + Self.cornerButtonSpacing)
+        let x = (islandWidth - stripWidth) / 2 - leftCornerWidth + CGFloat(index) * (size + Self.cornerButtonSpacing)
         return CGRect(x: x, y: (topHeight - size) / 2, width: size, height: size)
     }
 
-    /// El botón del Pomodoro, el primero de la esquina izquierda
-    func pomodoroButtonFrame(islandWidth: CGFloat, topHeight: CGFloat) -> CGRect? {
-        guard hasPomodoroButton else { return nil }
-        return leftCornerFrame(0, islandWidth: islandWidth, topHeight: topHeight)
+    // El botón número `index` del grupo de la derecha, contando desde el borde derecho, pegado al de las alas
+    private func rightCornerFrame(_ index: Int, islandWidth: CGFloat, topHeight: CGFloat) -> CGRect {
+        let size = Self.cornerButtonSize(topHeight: topHeight)
+        let x = (islandWidth + stripWidth) / 2 + rightCornerWidth - size - CGFloat(index) * (size + Self.cornerButtonSpacing)
+        return CGRect(x: x, y: (topHeight - size) / 2, width: size, height: size)
     }
 
-    /// La taza de mantener despierto, a la derecha del Pomodoro (o la primera, sin él)
+    /// Las píldoras de las pestañas, a la izquierda de las alas. Con una sola pestaña, ninguna
+    func tabFrames(islandWidth: CGFloat, topHeight: CGFloat) -> [(tab: IslandTab, frame: CGRect)] {
+        guard tabs.count > 1 else { return [] }
+        return tabs.enumerated().map { index, tab in
+            (tab, leftCornerFrame(index, islandWidth: islandWidth, topHeight: topHeight))
+        }
+    }
+
+    /// La taza de mantener despierto, a la izquierda del engranaje (o la primera, sin él)
     func keepAwakeFrame(islandWidth: CGFloat, topHeight: CGFloat) -> CGRect? {
         guard hasKeepAwake else { return nil }
-        return leftCornerFrame(hasPomodoroButton ? 1 : 0, islandWidth: islandWidth, topHeight: topHeight)
+        return rightCornerFrame(hasSettingsButton ? 1 : 0, islandWidth: islandWidth, topHeight: topHeight)
     }
 
-    /// El engranaje de los ajustes, en la esquina derecha
+    /// El engranaje de los ajustes, el último de la derecha
     func settingsButtonFrame(islandWidth: CGFloat, topHeight: CGFloat) -> CGRect? {
         guard hasSettingsButton else { return nil }
-        let size = Self.cornerButtonSize(topHeight: topHeight)
-        let x = (islandWidth + bodyWidth) / 2 - Self.padding - size
-        return CGRect(x: x, y: (topHeight - size) / 2, width: size, height: size)
+        return rightCornerFrame(0, islandWidth: islandWidth, topHeight: topHeight)
+    }
+
+    // MARK: - Los módulos de Utilidades y Desarrollador
+
+    /// La segunda fila de Utilidades, en coordenadas de la fila: el calendario, el portapapeles y la bandeja
+    var utilityModules: ModuleGridLayout {
+        ModuleGridLayout(
+            row: ModuleID.modules(of: .utilities), fixedWidths: Self.utilityRowWidths, width: mediaWidth,
+            height: Self.moduleHeight, spacing: Self.moduleSpacing
+        )
+    }
+
+    /// La rejilla de Desarrollador, en coordenadas de la rejilla
+    var developerGrid: ModuleGridLayout {
+        ModuleGridLayout(
+            modules: developerModules, columns: Self.developerColumns, width: mediaWidth,
+            rowHeight: Self.moduleHeight, spacing: Self.moduleSpacing
+        )
     }
 
     // MARK: - La fila de la música y el Pomodoro
 
-    /// Dónde empieza la fila, en coordenadas de la isla (origen arriba a la izquierda)
-    func activityOrigin(islandWidth: CGFloat, topHeight: CGFloat) -> CGPoint {
-        CGPoint(x: (islandWidth - mediaWidth) / 2, y: topHeight + Self.gapBelowNotch + Self.cardHeight + Self.activityGap)
+    /// Los botones del Pomodoro: sin sesión, solo el de empezar
+    var pomodoroControlList: [Control] {
+        pomodoroIdle ? [.pomodoroPlayPause] : Self.pomodoroControls
     }
 
-    /// La parte de la música, en coordenadas de la fila: toda la fila si no hay Pomodoro
+    /// Dónde empieza la fila, en coordenadas de la isla (origen arriba a la izquierda). Es lo primero de Utilidades
+    func activityOrigin(islandWidth: CGFloat, topHeight: CGFloat) -> CGPoint {
+        CGPoint(x: (islandWidth - mediaWidth) / 2, y: topHeight + Self.gapBelowNotch)
+    }
+
+    /// La parte de la música, en coordenadas de la fila: toda la fila si no hay Pomodoro. Solo existe en Utilidades
     var musicSection: CGRect? {
-        guard hasMedia else { return nil }
+        guard tab == .utilities, hasMedia else { return nil }
         guard hasPomodoro else { return CGRect(x: 0, y: 0, width: mediaWidth, height: Self.activityHeight) }
         // El reparto, sin dejar a ninguna de las dos por debajo de su mínimo
         let shared = mediaWidth - 2 * Self.dividerGap
@@ -277,9 +377,9 @@ struct IslandExpandedLayout: Equatable {
         return CGRect(x: 0, y: 0, width: width, height: Self.activityHeight)
     }
 
-    /// La parte del Pomodoro, en coordenadas de la fila: toda la fila si no hay música
+    /// La parte del Pomodoro, en coordenadas de la fila: toda la fila si no hay música. Solo existe en Utilidades
     var pomodoroSection: CGRect? {
-        guard hasPomodoro else { return nil }
+        guard tab == .utilities, hasPomodoro else { return nil }
         let x = musicSection.map { $0.maxX + 2 * Self.dividerGap } ?? 0
         return CGRect(x: x, y: 0, width: mediaWidth - x, height: Self.activityHeight)
     }
@@ -313,19 +413,19 @@ struct IslandExpandedLayout: Equatable {
         }
     }
 
-    /// El botón bajo un punto de la isla: los de las esquinas (con un margen, para acertarlos fácil), la carátula
-    /// y los de la música, o los del Pomodoro
+    /// El botón bajo un punto de la isla: los de las esquinas (con un margen, para acertarlos fácil) y, en
+    /// Utilidades, la carátula y los de la música, o los del Pomodoro. Lo que no se ve en la pestaña elegida no responde
     func control(at point: CGPoint, islandWidth: CGFloat, topHeight: CGFloat) -> Control? {
+        if let hit = tabFrames(islandWidth: islandWidth, topHeight: topHeight)
+            .first(where: { $0.frame.insetBy(dx: -2, dy: -4).contains(point) }) {
+            return .tab(hit.tab)
+        }
         if let frame = keepAwakeFrame(islandWidth: islandWidth, topHeight: topHeight), frame.insetBy(dx: -2, dy: -4).contains(point) {
             return .keepAwake
         }
         if let frame = settingsButtonFrame(islandWidth: islandWidth, topHeight: topHeight),
            frame.insetBy(dx: -4, dy: -4).contains(point) {
             return .settings
-        }
-        if let frame = pomodoroButtonFrame(islandWidth: islandWidth, topHeight: topHeight),
-           frame.insetBy(dx: -2, dy: -4).contains(point) {
-            return .pomodoroToggle
         }
         let origin = activityOrigin(islandWidth: islandWidth, topHeight: topHeight)
         let local = CGPoint(x: point.x - origin.x, y: point.y - origin.y)
@@ -336,7 +436,7 @@ struct IslandExpandedLayout: Equatable {
             }
         }
         if let pomodoro = pomodoroSection,
-           let hit = controlFrames(Self.pomodoroControls, in: pomodoro).first(where: { $0.frame.insetBy(dx: -3, dy: -3).contains(local) }) {
+           let hit = controlFrames(pomodoroControlList, in: pomodoro).first(where: { $0.frame.insetBy(dx: -3, dy: -3).contains(local) }) {
             return hit.control
         }
         return nil
@@ -349,11 +449,12 @@ struct IslandExpandedLayout: Equatable {
         return music.contains(CGPoint(x: point.x - origin.x, y: point.y - origin.y))
     }
 
-    /// La tarjeta bajo un punto de la isla (origen arriba a la izquierda), o `nil` en los huecos y fuera de
-    /// la fila. La fila de tarjetas va centrada en la isla, debajo de la franja del notch.
+    /// La tarjeta bajo un punto de la isla (origen arriba a la izquierda), o `nil` en los huecos, fuera de la fila y
+    /// en las pestañas que no son la de los escritorios. La fila de tarjetas va centrada en la isla, debajo de la
+    /// franja del notch.
     func cardIndex(at point: CGPoint, islandWidth: CGFloat, topHeight: CGFloat) -> Int? {
         let top = topHeight + Self.gapBelowNotch
-        guard !spaces.isEmpty, point.y >= top, point.y < top + Self.cardHeight else { return nil }
+        guard tab == .desktops, !spaces.isEmpty, point.y >= top, point.y < top + Self.cardHeight else { return nil }
         let rowWidth = CGFloat(spaces.count) * cardWidth + CGFloat(spaces.count - 1) * Self.cardSpacing
         let x = point.x - (islandWidth - rowWidth) / 2
         guard x >= 0, x < rowWidth else { return nil }

@@ -9,7 +9,7 @@ import os
 @MainActor
 final class SettingsWindow: NSObject, NSWindowDelegate {
     enum Tab: Int, CaseIterable {
-        case general, island, music, pomodoro, desktops, shortcuts, about
+        case general, island, music, pomodoro, desktops, utilities, developer, shortcuts, about
 
         var title: String {
             switch self {
@@ -18,6 +18,8 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             case .music: "Música"
             case .pomodoro: "Pomodoro"
             case .desktops: "Escritorios"
+            case .utilities: "Utilidades"
+            case .developer: "Desarrollador"
             case .shortcuts: "Atajos"
             case .about: "Acerca de"
             }
@@ -30,6 +32,8 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             case .music: "music.note"
             case .pomodoro: "timer"
             case .desktops: "square.grid.2x2"
+            case .utilities: "slider.horizontal.3"
+            case .developer: "terminal"
             case .shortcuts: "keyboard"
             case .about: "info.circle"
             }
@@ -43,6 +47,8 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             case .music: 260
             case .pomodoro: 720
             case .desktops: 400
+            case .utilities: 760
+            case .developer: 760
             case .shortcuts: 420
             case .about: 470
             }
@@ -55,15 +61,24 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
 
     private let settings: AppSettings
     private let launchAtLogin: LaunchAtLogin
+    private let claude: ClaudeConnection
+    private let calendar: CalendarStore
+    private let clipboard: ClipboardStore
     private let showWelcome: @MainActor () -> Void
     private var window: NSWindow?
     private var tabs: NSTabViewController?
     /// Al pasar a «Primeros pasos» la app sigue activa: esa ventana necesita el teclado
     private var handingOff = false
 
-    init(settings: AppSettings, launchAtLogin: LaunchAtLogin, showWelcome: @escaping @MainActor () -> Void) {
+    init(
+        settings: AppSettings, launchAtLogin: LaunchAtLogin, claude: ClaudeConnection, calendar: CalendarStore,
+        clipboard: ClipboardStore, showWelcome: @escaping @MainActor () -> Void
+    ) {
         self.settings = settings
         self.launchAtLogin = launchAtLogin
+        self.claude = claude
+        self.calendar = calendar
+        self.clipboard = clipboard
         self.showWelcome = showWelcome
     }
 
@@ -83,7 +98,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         tabs.transitionOptions = [.crossfade, .allowUserInteraction]
         for tab in Tab.allCases {
             let content = SettingsTabView(
-                tab: tab, settings: settings, launchAtLogin: launchAtLogin,
+                tab: tab, settings: settings, launchAtLogin: launchAtLogin, claude: claude, calendar: calendar, clipboard: clipboard,
                 showWelcome: { [weak self] in
                     self?.handingOff = true
                     self?.window?.close()

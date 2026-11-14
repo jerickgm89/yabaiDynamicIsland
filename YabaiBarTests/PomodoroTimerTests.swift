@@ -153,69 +153,71 @@ struct PomodoroPresetTests {
     }
 }
 
-// Cuatro espacios: cuerpo de 580 pt en una isla de 618. La música y el Pomodoro comparten la fila (y = 126–222): la
-// música se lleva 300 pt (33–333), porque el Pomodoro no baja de 220, y el Pomodoro empieza en x = 365, tras la
-// línea. Los botones van debajo del texto (y = 184–214): los de la música en 127–229 y los del Pomodoro en 459–561
+// Utilidades con cuatro espacios: cuerpo de 760 pt en una isla de 798. La música y el Pomodoro comparten la fila de
+// 732 pt (x = 33–765, y = 46–142): la música se lleva el 58 % de lo que queda tras los 2 × 16 de la línea, 406 pt
+// (33–439), y el Pomodoro empieza en x = 33 + 406 + 32 = 471. Los botones van debajo del texto (y = 104–134): los de la
+// música en 127–229 y los del Pomodoro en 565–667
 struct PomodoroLayoutTests {
     private func layout(pomodoro: Bool = true) -> IslandExpandedLayout {
         let spaces = (1...4).map { SpaceSummary(index: $0, isFocused: $0 == 1, apps: []) }
         return IslandExpandedLayout(
-            spaces: spaces, minBodyWidth: 400, maxBodyWidth: 2000, topHeight: 38, hasMedia: true,
-            hasKeepAwake: true, hasPomodoro: pomodoro, hasPomodoroButton: true
+            spaces: spaces, minBodyWidth: 400, maxBodyWidth: 2000, topHeight: 38, tab: .utilities, hasMedia: true,
+            hasKeepAwake: true, hasPomodoro: pomodoro
         )
     }
 
     private func control(_ x: CGFloat, _ y: CGFloat, pomodoro: Bool = true) -> IslandExpandedLayout.Control? {
-        layout(pomodoro: pomodoro).control(at: CGPoint(x: x, y: y), islandWidth: 618, topHeight: 38)
+        layout(pomodoro: pomodoro).control(at: CGPoint(x: x, y: y), islandWidth: 798, topHeight: 38)
     }
 
     // Con los dos, la isla mide lo mismo que solo con la música: comparten la fila
     @Test func sharingTheRowKeepsTheIslandHeight() {
-        #expect(layout(pomodoro: false).height == 236)
-        #expect(layout().height == 236)
-        #expect(layout().musicSection == CGRect(x: 0, y: 0, width: 300, height: 96))
-        #expect(layout().pomodoroSection == CGRect(x: 332, y: 0, width: 220, height: 96))
-        #expect(layout().dividerX == 316)
+        #expect(layout(pomodoro: false).height == 278)
+        #expect(layout().height == 278)
+        #expect(layout().musicSection == CGRect(x: 0, y: 0, width: 406, height: 96))
+        #expect(layout().pomodoroSection == CGRect(x: 438, y: 0, width: 294, height: 96))
+        #expect(layout().dividerX == 422)
     }
 
     @Test func findsTheControlsOfBothParts() {
-        #expect(control(60, 150) == .artwork)
-        #expect(control(142, 195) == .previous)
-        #expect(control(214, 195) == .next)
-        #expect(control(476, 195) == .pomodoroPlayPause)
-        #expect(control(512, 195) == .pomodoroSkip)
-        #expect(control(548, 195) == .pomodoroStop)
-        #expect(control(410, 150) == nil)
+        #expect(control(60, 90) == .artwork)
+        #expect(control(142, 119) == .previous)
+        #expect(control(214, 119) == .next)
+        #expect(control(580, 119) == .pomodoroPlayPause)
+        #expect(control(616, 119) == .pomodoroSkip)
+        #expect(control(652, 119) == .pomodoroStop)
+        #expect(control(410, 90) == nil)
         // Sin Pomodoro, los botones de la música vuelven a la derecha
-        #expect(control(570, 174, pomodoro: false) == .next)
+        #expect(control(750, 94, pomodoro: false) == .next)
     }
 
     // El gesto de dos dedos de lado solo cuenta sobre la música, no sobre el Pomodoro
     @Test func theSwipeOnlyCountsOverTheMusic() {
-        #expect(layout().musicContains(CGPoint(x: 200, y: 150), islandWidth: 618, topHeight: 38))
-        #expect(!layout().musicContains(CGPoint(x: 480, y: 150), islandWidth: 618, topHeight: 38))
+        #expect(layout().musicContains(CGPoint(x: 200, y: 90), islandWidth: 798, topHeight: 38))
+        #expect(!layout().musicContains(CGPoint(x: 480, y: 90), islandWidth: 798, topHeight: 38))
     }
 
-    // Con pocos escritorios, la isla se ensancha para que quepan las dos partes con sus botones
-    @Test func fewDesktopsStillFitBothParts() throws {
+    // En una pantalla estrecha, el cuerpo no baja de lo que piden las dos partes con sus botones
+    @Test func narrowScreensStillFitBothParts() throws {
         let spaces = [SpaceSummary(index: 1, isFocused: true, apps: [])]
         let narrow = IslandExpandedLayout(
-            spaces: spaces, minBodyWidth: 364, maxBodyWidth: 2000, topHeight: 38, hasMedia: true, hasPomodoro: true
+            spaces: spaces, minBodyWidth: 364, maxBodyWidth: 500, topHeight: 38, tab: .utilities, hasMedia: true,
+            hasPomodoro: true
         )
         let minimum: CGFloat = 2 * 14 + 2 * 220 + 2 * 16
         #expect(narrow.bodyWidth == minimum)
         let pomodoro = try #require(narrow.pomodoroSection)
-        for item in narrow.controlFrames(IslandExpandedLayout.pomodoroControls, in: pomodoro) {
+        for item in narrow.controlFrames(narrow.pomodoroControlList, in: pomodoro) {
             #expect(item.frame.maxX <= pomodoro.maxX)
         }
     }
 
-    // Arriba a la izquierda, x = 19 + 14 = 33, y la taza justo a su derecha (33 + 26 + 4)
-    @Test func theButtonSitsInTheTopLeftCorner() {
-        #expect(layout().pomodoroButtonFrame(islandWidth: 618, topHeight: 38) == CGRect(x: 33, y: 6, width: 26, height: 26))
-        #expect(layout().keepAwakeFrame(islandWidth: 618, topHeight: 38) == CGRect(x: 63, y: 6, width: 26, height: 26))
-        #expect(control(46, 19) == .pomodoroToggle)
-        #expect(control(76, 19) == .keepAwake)
+    // La taza, junto al engranaje a la derecha de las alas: sin él, justo donde acaban (x = (798 + 400) / 2 = 599)
+    @Test func theCupSitsNextToTheRightWing() {
+        #expect(layout().keepAwakeFrame(islandWidth: 798, topHeight: 38) == CGRect(x: 599, y: 6, width: 26, height: 26))
+        #expect(control(612, 19) == .keepAwake)
+        // Ya no hay botón del Pomodoro en la esquina izquierda: se empieza desde su parte de Utilidades
+        #expect(control(46, 19) == nil)
     }
 }
 

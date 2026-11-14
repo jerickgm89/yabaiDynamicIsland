@@ -101,10 +101,17 @@ struct MusicIndicatorLayoutTests {
         #expect(layout.wingWidth == 0)
     }
 
+    // En Utilidades la fila de la música ocupa y = 46–142 y x = 33–765 de una isla de 798
     @Test func theStripCoversItsWholeArea() {
         let spaces = (1...4).map { summary($0, apps: 0, focused: $0 == 1) }
-        let layout = IslandExpandedLayout(spaces: spaces, minBodyWidth: 400, maxBodyWidth: 2000, topHeight: 38, hasMedia: true)
-        #expect(layout.musicContains(CGPoint(x: 300, y: 150), islandWidth: 618, topHeight: 38))
-        #expect(!layout.musicContains(CGPoint(x: 300, y: 100), islandWidth: 618, topHeight: 38))
+        let layout = IslandExpandedLayout(
+            spaces: spaces, minBodyWidth: 400, maxBodyWidth: 2000, topHeight: 38, tab: .utilities, hasMedia: true
+        )
+        #expect(layout.musicContains(CGPoint(x: 300, y: 100), islandWidth: 798, topHeight: 38))
+        #expect(!layout.musicContains(CGPoint(x: 300, y: 40), islandWidth: 798, topHeight: 38))
+        #expect(!layout.musicContains(CGPoint(x: 300, y: 150), islandWidth: 798, topHeight: 38))
+        // En la pestaña de los escritorios no hay música que deslizar
+        let desktops = IslandExpandedLayout(spaces: spaces, minBodyWidth: 400, maxBodyWidth: 2000, topHeight: 38, hasMedia: true)
+        #expect(!desktops.musicContains(CGPoint(x: 300, y: 100), islandWidth: 618, topHeight: 38))
     }
 }

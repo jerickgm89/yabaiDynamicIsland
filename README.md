@@ -127,6 +127,71 @@ ditto build/Build/Products/Release/YabaiBar.app /Applications/YabaiBar.app
 </details>
 
 <details>
+<summary>Claude Code: avisos de preguntas</summary>
+
+La pestaña Desarrollador de la isla enseña las sesiones de Claude Code que tienes abiertas (leyendo `~/.claude/sessions`, sin configurar nada). Para que además te avise cuando Claude te pregunta algo, YabaiBar necesita sus hooks: en Ajustes › Desarrollador pulsa «Conectar con Claude Code…». Pide confirmación, guarda una copia de tu `settings.json` como `settings.json.bak-yabaibar` y solo añade sus cinco entradas; «Quitar los hooks…» borra solo esas. Los hooks mandan a YabaiBar el nombre del evento, el id y la carpeta de la sesión y, en una pregunta, lo que Claude Code dice («necesita tu permiso para usar Bash»), nunca lo que escribes ni lo que responde Claude. El archivo se reescribe entero, con otro formato y las claves ordenadas.
+
+Si prefieres añadirlos tú, pon esto en `~/.claude/settings.json` (cambia la ruta si YabaiBar no está en `/Applications`) y reinicia las sesiones abiertas:
+
+```json
+{
+  "hooks": {
+    "Notification": [{ "hooks": [{ "type": "command", "command": "'/Applications/YabaiBar.app/Contents/Helpers/yb' claude-hook", "timeout": 5 }] }],
+    "PreToolUse": [{ "matcher": "AskUserQuestion|ExitPlanMode", "hooks": [{ "type": "command", "command": "'/Applications/YabaiBar.app/Contents/Helpers/yb' claude-hook", "timeout": 5 }] }],
+    "PostToolUse": [{ "hooks": [{ "type": "command", "command": "'/Applications/YabaiBar.app/Contents/Helpers/yb' claude-hook", "timeout": 5 }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "'/Applications/YabaiBar.app/Contents/Helpers/yb' claude-hook", "timeout": 5 }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "'/Applications/YabaiBar.app/Contents/Helpers/yb' claude-hook", "timeout": 5 }] }]
+  }
+}
+```
+
+Si ya tienes hooks en esos eventos, añade la entrada a su lista en vez de sustituirla. No se ven los chats normales de la app de Claude, solo las sesiones de Claude Code.
+
+</details>
+
+<details>
+<summary>Git y GitHub: avisos</summary>
+
+El módulo Git de la pestaña Desarrollador enseña, de cada repositorio, la rama, los commits por subir (↑) y por bajar (↓), los archivos con cambios (●), los PR abiertos y el CI. Vigila los repositorios de las sesiones de Claude Code que tengas abiertas y las carpetas que añadas en Ajustes › Desarrollador, y avisa en la isla cerrada de: commits sin subir pasado un rato (30 min por defecto), cambios sin commit cuando una sesión de Claude Code termina, una etiqueta sin release en GitHub y cómo terminó el CI de tu último push. Cada aviso se apaga en Ajustes. Solo informa: YabaiBar nunca hace commit, push, fetch ni crea etiquetas, y un clic en un repositorio abre su página de GitHub.
+
+Con la isla cerrada no mira nada por su cuenta: el sistema le avisa cuando cambia algo en un repositorio (FSEvents) y entonces ejecuta `git status` y alguna consulta más, como mucho una vez cada 30 s por repositorio. Los datos de GitHub (releases, CI y PR) salen de `gh`: usa su sesión y no guarda ningún token, y solo se consultan repositorios cuyo `origin` es de github.com. Si `gh` no está instalado o falla, el módulo no dice nada de eso en vez de adivinarlo. Hace falta `git` (las herramientas de línea de comandos de Xcode o Homebrew); `gh` es opcional.
+
+</details>
+
+<details>
+<summary>Portapapeles: historial, herramientas y selector de color</summary>
+
+El módulo Portapapeles de la pestaña Utilidades tiene dos modos. **Herramientas** (siempre disponibles): cada botón lee el texto que tienes copiado, lo transforma y lo vuelve a copiar, y lo confirma en la cabecera: JSON (formatear y compactar), base64, URL, JWT (se lee sin verificar la firma), UUID nuevo, timestamp ↔ fecha (local e ISO 8601) y SHA-256. Si lo copiado no vale, lo dice y no toca el portapapeles. El cuentagotas copia el color que elijas en pantalla en hexadecimal y guarda las 8 últimas muestras. **Historial:** las últimas copias, para volver a copiar una con un clic.
+
+El historial está apagado hasta que lo enciendes (el botón «Activar el historial» o Ajustes › Utilidades): macOS 27 pregunta antes de dejar que una app lea el portapapeles sin que pegues, y el historial apunta todo lo que copias. Para que siga solo, elige «Permitir» para YabaiBar en Ajustes del Sistema › Privacidad y seguridad › Pegar desde otras apps. Vive en memoria (20 copias, 6 a la vista); no guarda lo que las apps marcan como oculto (las contraseñas) ni lo de las apps de la lista de Ajustes (gestores de contraseñas por defecto), y solo va al disco si lo activas.
+
+</details>
+
+<details>
+<summary>Calendario: permiso y avisos</summary>
+
+La pestaña Utilidades de la isla enseña tus eventos de Calendario (iCloud, Google y las demás cuentas que tengas en la app Calendario): una tira de 7 días centrada en hoy, y debajo hasta 2 eventos del día con su hora y el color de su calendario. Con un enlace de videollamada (Meet, Zoom o Teams) en el evento sale «Unirse». Un clic en un día enseña sus eventos, las flechas o el gesto de dos dedos de lado sobre la tira pasan de semana, y un clic en un evento abre Calendario.
+
+Para leer los eventos, macOS te pide permiso la primera vez que pulsas «Dar acceso» (en el módulo o en Ajustes › Utilidades); YabaiBar no lo pide por su cuenta, solo lee (nunca crea ni cambia eventos), no guarda nada y no manda nada a ningún sitio. Sin permiso la tira se ve igual. Si lo negaste, se cambia en Ajustes del Sistema › Privacidad y seguridad › Calendarios. Con la isla cerrada, la pestaña Utilidades se marca con un punto azul 15 minutos antes de un evento y la isla te avisa 5 minutos antes (se puede apagar en Ajustes › Utilidades, donde también eliges qué calendarios se ven).
+
+</details>
+
+<details>
+<summary>Terminal: avisos de comandos largos</summary>
+
+Para que la isla te avise cuando un comando largo termina (con ✓ o ✗, lo que tardó y el código de salida), añade a tu `~/.zshrc` la línea que te da Ajustes › Desarrollador › Terminal › «Copiar la línea», y abre una terminal nueva:
+
+```sh
+eval "$(yb shell-init zsh)"
+```
+
+(`yb` es el ayudante que lleva la app dentro, en `YabaiBar.app/Contents/Helpers/yb`; con Homebrew queda en el PATH.) Avisa de los comandos que tardan más de 10 s: `YB_AVISO_MIN=30` cambia los segundos (Ajustes tiene su propio mínimo, y manda el más alto), `YB_AVISO_IGNORE="vim ssh …"` sustituye la lista de programas que no avisan (por defecto, los interactivos: `vim`, `ssh`, `less`, `tail`, `claude`…) y `YB_AVISO_IGNORE_EXTRA="psql lazygit"` le añade. Ctrl-C y Ctrl-Z no avisan. Solo se manda el nombre del programa, nunca la línea entera (puede llevar claves), el código de salida y lo que tardó. YabaiBar no toca tu `~/.zshrc`. Si la terminal está delante cuando el comando termina, no sale en la isla, pero sí en el módulo Avisos (se cambia en Ajustes).
+
+Desde un script, `yb aviso "Despliegue" "en producción" --ok` (o `--error`, `--info`) enseña un aviso a mano, y `--app com.apple.Terminal` lleva a esa app al pulsarlo (solo si ya está abierta). El módulo Avisos de la pestaña Desarrollador guarda los 10 últimos avisos, también los de Claude Code y Git.
+
+</details>
+
+<details>
 <summary>Señales de yabai</summary>
 
 YabaiBar le pide a yabai que la avise al crear, cerrar o minimizar ventanas y al cambiar los espacios o las pantallas (`yabai -m signal --add`, con etiquetas `yb_*`), sin tocar tu `yabairc`. Si yabai se reinicia, las vuelve a añadir.
